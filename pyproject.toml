@@ -1,0 +1,57 @@
+[project]
+name = "swe-agent"
+version = "0.0.0"
+description = "A model-agnostic, terminal-first software-engineering agent, built from scratch."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Kaiwen Wu", email = "kaw083@ucsd.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+swe-agent = "swe_agent.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes: unused imports, undefined names
+    "I",      # isort: import order
+    "B",      # flake8-bugbear: likely bugs, e.g. mutable default arguments
+    "UP",     # pyupgrade: modern syntax for the target Python version
+    "SIM",    # flake8-simplify
+    "C4",     # flake8-comprehensions
+    "PT",     # flake8-pytest-style
+    "ASYNC",  # flake8-async: blocking calls inside async code
+    "RUF",    # ruff-specific rules
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+strict = ["src"]
+
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--import-mode=importlib"]
+strict = true
