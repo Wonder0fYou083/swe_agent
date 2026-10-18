@@ -1,8 +1,8 @@
 # swe_agent
 
-A model-agnostic, terminal-first software-engineering agent, built from scratch to learn agent engineering.
+A SWE agent built from scratch to learn agent engineering.
 
-> **Status:** Phase 0 — Foundations (`v0.0.0`). The repo skeleton exists; the agent does not yet. See [ROADMAP.md](ROADMAP.md) for the plan.
+> **Status:** Phase 0 — developed the repo's skeleton. Real development of the agent has not started yet :(
 >
 > Not affiliated with Princeton's [SWE-agent](https://github.com/SWE-agent/SWE-agent).
 
