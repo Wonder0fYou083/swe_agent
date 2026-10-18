@@ -11,8 +11,6 @@
 
 ## Issues and fixes
 
-- CI failed before running any code: `astral-sh/setup-uv@v10` isn't a published tag → pinned to `v10.3.0`.
-- `KeyError: 'stop_resason'` → fixed the typo (`stop_reason`).
 - pyright: `tool_call` possibly unbound → set to `None` before the loop and exit if no `tool_use` block is found.
 
 ## Next
