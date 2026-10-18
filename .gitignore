@@ -1,0 +1,27 @@
+# Secrets: API keys live in .env, which never enters git.
+# Commit a .env.example with empty values instead.
+.env
+.env.*
+!.env.example
+
+# Python bytecode and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environment created by `uv sync`
+.venv/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Personal Claude Code settings (shared settings in .claude/ stay tracked)
+.claude/settings.local.json
+
+# macOS
+.DS_Store
