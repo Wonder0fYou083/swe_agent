@@ -28,9 +28,8 @@ CI runs the same lint, type and test commands on every pull request.
 
 ## Project docs
 
-- [ROADMAP.md](ROADMAP.md): phases, deliverables and "Done when" criteria
 - [AGENTS.md](AGENTS.md): instructions for coding agents working on this repo
-- [docs/devlog/](docs/devlog/): one entry per phase
+- [docs/devlog/](docs/devlog/): what was built in each phase
 
 ## License
 

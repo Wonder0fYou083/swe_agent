@@ -25,3 +25,7 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Private notes and personal Claude Code instructions: never committed
+notes/
+CLAUDE.local.md

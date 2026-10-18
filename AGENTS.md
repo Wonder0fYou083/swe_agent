@@ -1,45 +1,19 @@
 # AGENTS.md
 
-Instructions for AI Agents working in this repository: Claude Code and this project's own agent. Humans should start with `README.md` and `ROADMAP.md`.
+Instructions for AI agents working in this repository: Claude Code and this project's own agent. Humans should start with `README.md`.
 
 ## What this project is
 
-`swe_agent` is a model-agnostic, terminal-first production SWE agent, built from scratch as a learning project. The owner is building it phase by phase to learn agent engineering: the agent loop, tool design, sandboxing, evals, context engineering, retrieval/RAG, harness engineering, loop engineering, MCP and ACP.
-
-- Plan and exit criteria for every phase: `ROADMAP.md`
-- **Current phase: Phase 0 — Foundations (`v0.0.0`).** Update this line at the start of each phase.
-
-## The learning rule (read this first)
-
-The owner writes the core agent components by hand. That is the point of the project. Unless the owner explicitly asks you, in the current session, to implement something in one of these areas, **do not write or rewrite code there**:
-
-| Area | Path |
-| --- | --- |
-| Agent loop, budgets, subagents | `src/swe_agent/core/` |
-| Provider adapters, tool-use wire format | `src/swe_agent/models/` |
-| Tool registry, tools, permissions | `src/swe_agent/tools/` |
-| Context manager, compaction, memory | `src/swe_agent/context/` |
-| Repo map, indexing, search | `src/swe_agent/retrieval/` |
-| Hooks, sensors, skills | `src/swe_agent/harness/` |
-| MCP and ACP protocol code | `src/swe_agent/mcp/`, `src/swe_agent/acp/` |
-| Eval runner logic | `evals/` |
-
-In those areas you **may**: explain concepts, review code and point out bugs, propose test cases, ask guiding questions, and sketch interfaces or pseudocode when asked. Point at the idea, not the finished solution.
-
-You may **freely help** with plumbing: `pyproject.toml`, CI workflows, pre-commit, Dockerfiles, Makefile, test fixtures and scaffolding, docs formatting, typo fixes, and refactors the owner requests on code they already wrote.
-
-If it is unclear which side of this line a request falls on, ask before writing code.
+`swe_agent` is a model-agnostic, terminal-first production SWE agent, built from scratch.
 
 ## Stack
 
 - Python 3.12+, managed with `uv`
 - ruff (lint + format), pyright (types), pytest + pytest-asyncio
 - pydantic v2, httpx / asyncio, Docker SDK, tree-sitter, typer + rich
-- **No agent frameworks inside `src/swe_agent/`**: no LangChain, LangGraph, LlamaIndex, CrewAI or vendor agent SDKs. Reading their source for ideas is encouraged.
+- **No agent frameworks inside `src/swe_agent/`**: no LangChain, LangGraph, LlamaIndex, CrewAI or vendor agent SDKs.
 
 ## Commands
-
-These exist once Phase 0 is done.
 
 ```bash
 uv sync                              # install
@@ -53,21 +27,21 @@ uv run pre-commit run --all-files    # git hooks: ruff + gitleaks
 
 ```text
 src/swe_agent/   cli/ core/ models/ tools/ env/ context/ retrieval/ harness/ mcp/ acp/ telemetry/
-prompts/       versioned system-prompt templates
-evals/         runner, task lists (smoke / dev / pro), results schema
-tests/         unit tests + recorded model responses
-docs/          adr/  devlog/  concepts/
-scratch/       throwaway experiments, never imported by src/
+prompts/         versioned system-prompt templates
+evals/           runner, task lists (smoke / dev / pro), results schema
+tests/           unit tests + recorded model responses
+docs/            adr/  devlog/
+scratch/         throwaway experiments, never imported by src/
 ```
 
 ## Conventions
 
-- **Commits:** Conventional Commits, e.g. `feat(tools): add str_replace editor`, `fix(core): stop on max cost`, `docs(devlog): phase 1 notes`.
+- **Commits:** Conventional Commits, e.g. `feat(tools): add str_replace editor`, `fix(core): stop on max cost`, `docs(devlog): phase 1`.
 - **Branches:** `feat/<short-name>` or `fix/<short-name>`; PR into `main`; squash-merge. `main` stays green.
 - **Tests:** every behavior change gets a unit test. Tests never call real model APIs or the network; use the scripted fake model or recorded responses.
 - **Types:** type hints on every public function; pyright must pass.
 - **Decisions:** record significant design choices as ADRs in `docs/adr/NNNN-short-title.md`.
-- **Style:** small functions, explicit over clever. The code is also learning material.
+- **Style:** small functions, explicit over clever.
 
 ## Safety
 
@@ -77,7 +51,5 @@ scratch/       throwaway experiments, never imported by src/
 
 ## Where things are written down
 
-- `ROADMAP.md` — phases, deliverables, "Done when" criteria
-- `docs/devlog/` — one entry per phase: what was built, what failed, numbers, questions
+- `docs/devlog/` — one entry per phase: what was built, issues hit and how they were fixed
 - `docs/adr/` — architecture decision records
-- `docs/concepts/` — the owner's own explanations of each concept
