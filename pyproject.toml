@@ -9,7 +9,12 @@ authors = [
     { name = "Kaiwen Wu", email = "kaw083@ucsd.edu" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+swe-agent = "swe_agent.cli.main:app"
 
 [dependency-groups]
 dev = [
