@@ -29,3 +29,4 @@ htmlcov/
 # Private notes and personal Claude Code instructions: never committed
 notes/
 CLAUDE.local.md
+docs/devlog/TEMPLATE.md
