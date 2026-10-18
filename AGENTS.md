@@ -46,7 +46,7 @@ uv sync                              # install
 uv run pytest                        # tests
 uv run ruff check . && uv run ruff format --check .
 uv run pyright                       # types
-uv run pre-commit run --all-files    # everything CI runs
+uv run pre-commit run --all-files    # git hooks: ruff + gitleaks
 ```
 
 ## Repo layout
