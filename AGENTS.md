@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Instructions for AI coding agents working in this repository: Claude Code, Codex, Cursor, and eventually this project's own agent. Humans should start with `README.md` and `ROADMAP.md`.
+Instructions for AI Agents working in this repository: Claude Code and this project's own agent. Humans should start with `README.md` and `ROADMAP.md`.
 
 ## What this project is
 
-`swe_agent` is a model-agnostic, terminal-first software-engineering agent, built from scratch as a learning project. The owner is building it phase by phase to learn agent engineering: the agent loop, tool design, sandboxing, evals, context engineering, retrieval/RAG, harness engineering, loop engineering, MCP and ACP.
+`swe_agent` is a model-agnostic, terminal-first production SWE agent, built from scratch as a learning project. The owner is building it phase by phase to learn agent engineering: the agent loop, tool design, sandboxing, evals, context engineering, retrieval/RAG, harness engineering, loop engineering, MCP and ACP.
 
 - Plan and exit criteria for every phase: `ROADMAP.md`
 - **Current phase: Phase 0 — Foundations (`v0.0.0`).** Update this line at the start of each phase.
