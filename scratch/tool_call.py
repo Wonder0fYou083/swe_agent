@@ -1,33 +1,18 @@
 import json
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 import httpx
 
 API_URL = "https://api.anthropic.com/v1/messages"
 MODEL = "claude-haiku-5-5"
+REPO_ROOT = Path(__file__).resolve().parent.parent  # this file lives in <repo>/scratch/
 
 api_key = os.environ.get("ANTHROPIC_API_KEY")
 if not api_key:
     sys.exit("no valid api key :(")
-
-"""
-TOOL_NAME = {
-    "name": "...",  # short identifier the model will use to call it; letters, digits, _ and -
-    "description": "...",  # plain English: what it does, when to use it, what it returns
-    "input_schema": {  # JSON Schema describing the arguments the model must send
-        "type": "object",  # always "object": the arguments are a set of named fields
-        "properties": {
-            "<field_name>": {
-                "type": "...",  # string | integer | number | boolean | array | object
-                "description": "...",  # what this field means, with an example
-            },
-            # ...more fields if the tool needs them
-        },
-        "required": ["<field_name>"],  # fields that must always be sent; leave optional ones out
-    },
-}
-"""
 
 BASH_TOOL = {
     "name": "bash",
@@ -65,41 +50,76 @@ body = {
 
 response = httpx.post(API_URL, headers=headers, json=body, timeout=60)
 print("status: ", response.status_code)
+# check before .json(): an error body has no stop_reason and may not even be JSON
+if response.status_code != 200:
+    sys.exit(f"API error: {response.text}")
 print(json.dumps(response.json(), indent=2))
 
 data = response.json()
 
-tool_call = None
+
+def append_one_tool_result(tool_call: dict) -> dict:
+
+    command = tool_call["input"]["command"]
+    result = None
+    stdout = None
+    stderr = None
+    returncode = 0
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            executable="/bin/bash",
+            capture_output=True,
+            text=True,
+            errors="replace",  # binary output must not crash the script
+            timeout=30,
+            cwd=REPO_ROOT,
+        )
+    except subprocess.TimeoutExpired as e:
+        stdout = (e.stdout or b"").decode(errors="replace")
+        stderr = (e.stderr or b"").decode(errors="replace")
+        returncode = -9
+
+    if result is not None:
+        stdout = result.stdout
+        stderr = result.stderr
+        returncode = result.returncode
+
+    tool_result = {
+        "type": "tool_result",
+        "tool_use_id": tool_call["id"],
+        "content": json.dumps(
+            {
+                "stdout": stdout,
+                "stderr": stderr,
+                "returncode": returncode,
+                "timeout": result is None,
+            }
+        ),
+        "is_error": returncode != 0,
+    }
+
+    return tool_result
+
+
 if data["stop_reason"] == "tool_use":
-    for block in data["content"]:
-        if block["type"] == "tool_use":
-            tool_call = block
+    tool_calls = [block for block in data["content"] if block["type"] == "tool_use"]
 
-    if tool_call is None:
-        sys.exit("No tool_use block found")
-
-    print("\nModel wants to run: ", tool_call["input"]["command"])
-    output = input("Paste the command's output: ")
+    if len(tool_calls) == 0:
+        sys.exit("No tool_use block found (wtf):(")
 
     body["messages"].append({"role": "assistant", "content": data["content"]})
 
-    body["messages"].append(
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tool_call["id"],
-                    "content": output,
-                }
-            ],
-        }
-    )
+    tool_results = []
+    for tool_call in tool_calls:
+        print("\nModel wants to run: ", tool_call["input"]["command"])
+        tool_results.append(append_one_tool_result(tool_call))
+    body["messages"].append({"role": "user", "content": tool_results})
 
-    print("\nSending messages: ")
     print(json.dumps(body, indent=2))
-
     response = httpx.post(API_URL, headers=headers, json=body, timeout=60)
-    data = response.json()
-    print("status:", response.status_code)
-    print(json.dumps(data, indent=2))
+    print("status: ", response.status_code)
+    if response.status_code != 200:
+        sys.exit(f"API error: {response.text}")
+    print(json.dumps(response.json(), indent=2))
