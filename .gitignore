@@ -20,6 +20,9 @@ dist/
 .coverage
 htmlcov/
 
+# Agent trajectories from `swe-agent run`: local data, not source
+runs/
+
 # Personal Claude Code settings (shared settings in .claude/ stay tracked)
 .claude/settings.local.json
 
