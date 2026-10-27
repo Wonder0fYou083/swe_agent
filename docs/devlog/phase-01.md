@@ -1,19 +1,18 @@
-# Phase 00 — Skeleton and a simple tool call · `v0.1.0`
+# Phase 01 — The agent loop · `v0.1.0`
 
-**Dates:** 2026-10-18 · **PRs:** #8
+**Dates:** 2026-10-18 · **PRs:** #8, #10, #11, #13
 
 ## Built
 
-- collect all tool calls returned by the model, reply to each one with matching results and tool_use_id.
-- catch time out exception.
+- `scratch/tool_call.py`: reply to every tool call in a response, each with a matching `tool_use_id`, and catch command timeouts.
 
 ## Issues and fixes
 
-- first used -1 as return code to let the model recognize time out result, which will be mistaken with other returns
-- Wrong key: "id" was used instead of "tool_use_id", which would have made the second API call fail.
-- Binary output crashed the script: strict decoding failed on non-UTF-8 bytes; fixed with errors="replace".
-- Commands ran in the wrong directory: they ran wherever the script was launched, not the repo root the tool description promises. Fixed with cwd=REPO_ROOT.
+- Timeouts were first reported only as return code -1, which the model could mistake for a real exit code → added an explicit `timeout` field to the tool result.
+- Wrong key: `id` was used instead of `tool_use_id`, which would have made the second API call fail.
+- Binary output crashed the script: strict decoding failed on non-UTF-8 bytes → decode with `errors="replace"`.
+- Commands ran wherever the script was launched, not the repo root the tool description promises → `cwd=REPO_ROOT`.
 
 ## Next
 
-- Phase 1: the agent loop. Repeat model calls and tool runs until a stop condition is met.
+- The bash tool, then the loop itself: repeat model calls and tool runs until a stop condition is met.

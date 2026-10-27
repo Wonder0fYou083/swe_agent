@@ -1,6 +1,6 @@
 # Phase 00 — Skeleton and a simple tool call · `v0.0.0`
 
-**Dates:** 2026-10-17 · **PRs:** #1, #2, #3, #4, #5, #6, #7
+**Dates:** 2026-10-17 · **PRs:** #1, #3
 
 ## Built
 
