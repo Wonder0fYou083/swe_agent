@@ -2,8 +2,6 @@
 
 A SWE agent with KV Cache built from scratch .
 
-> **Status:** Phase 0 — developed the repo's skeleton. Real development of the agent has not started yet :(
->
 > Not affiliated with Princeton's [SWE-agent](https://github.com/SWE-agent/SWE-agent).
 
 ## Quickstart
