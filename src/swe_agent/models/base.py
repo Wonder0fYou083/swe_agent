@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from swe_agent.models.types import Message, ModelResponse, ToolSpec
+from swe_agent.models.types import Endpoint, Message, ModelResponse, ToolSpec
 
 
 class ModelError(Exception):
@@ -12,6 +12,7 @@ class ModelError(Exception):
 
 class Model(Protocol):
     name: str
+    endpoint: Endpoint
 
     def complete(
         self, system: str, messages: Sequence[Message], tools: Sequence[ToolSpec]

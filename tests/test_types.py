@@ -2,7 +2,15 @@ import pytest
 
 from swe_agent.models.base import ModelError
 from swe_agent.models.fake import ScriptedModel, bash_call, text_reply
-from swe_agent.models.types import Message, ProviderBlock, TextBlock, ToolCall, ToolResult, Usage
+from swe_agent.models.types import (
+    Endpoint,
+    Message,
+    ProviderBlock,
+    TextBlock,
+    ToolCall,
+    ToolResult,
+    Usage,
+)
 
 
 def test_message_tool_calls_returns_only_tool_calls() -> None:
@@ -57,6 +65,12 @@ def test_scripted_model_records_a_copy_of_each_request() -> None:
 
     assert model.requests[0].system == "sys"
     assert len(model.requests[0].messages) == 1
+
+
+def test_scripted_model_reports_its_endpoint() -> None:
+    model = ScriptedModel([])
+
+    assert model.endpoint == Endpoint(provider="scripted", base_url=None, cache_requested=False)
 
 
 def test_scripted_model_record_ignores_later_edits_to_sent_messages() -> None:

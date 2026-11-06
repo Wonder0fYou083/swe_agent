@@ -114,10 +114,12 @@ def format_observation(result: BashResult) -> str:
     On timeout, replace the first line with
     "timed out; the command and its child processes were killed".
     """
-    str = ""
+    s = ""
     if result.timed_out:
-        str += "timed out; the command and its child processes were killed"
+        s += "timed out; the command and its child processes were killed\n"
     else:
-        str += f"exit code: {result.exit_code}\n"
-    str += f"{result.output}\n"
-    return str
+        s += f"exit code: {result.exit_code}\n"
+    s += "<output>\n"
+    s += f"{result.output}\n"
+    s += "</output>\n"
+    return s

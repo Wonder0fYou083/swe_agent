@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from swe_agent.models.base import ModelError
 from swe_agent.models.types import (
+    Endpoint,
     Message,
     ModelResponse,
     StopReason,
@@ -25,6 +26,7 @@ class ScriptedRequest(BaseModel):
 class ScriptedModel:
     def __init__(self, responses: Sequence[ModelResponse], name: str = "scripted") -> None:
         self.name = name
+        self.endpoint = Endpoint(provider="scripted", base_url=None, cache_requested=False)
         self._responses = list(responses)
         self.requests: list[ScriptedRequest] = []
 
