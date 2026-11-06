@@ -90,3 +90,11 @@ class ModelResponse(BaseModel):
     first_token_ns: int | None = None  # streaming only
     ended_ns: int  # time.monotonic_ns() once the full response was read
     attempts: int = 1  # 1 + number of retries
+
+
+class Endpoint(BaseModel):
+    """Where a model's requests go and how they are sent. Recorded once per session."""
+
+    provider: str  # "anthropic", "openai" or "scripted"
+    base_url: str | None  # None when nothing goes over the network
+    cache_requested: bool  # what we asked for; the Usage cache counters show what happened
