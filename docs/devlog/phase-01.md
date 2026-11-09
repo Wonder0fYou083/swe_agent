@@ -1,14 +1,16 @@
 # Phase 01 — The agent loop · `v0.1.0`
 
-**Dates:** 2026-11-09 · **PRs:** #8, #10, #11, #13, #15, #17, #18, #19
+**Dates:** 2026-11-09 · **PRs:** #8, #10, #11, #13, #15, #17, #18, #19, #20
 
 ## Built
 
 - `src/swe_agent/tools/bash.py`: run bash commands on macos using python subprocess, timeout set. Warning: no sandboxing for now.
-- `src/swe_agent/telemetry/logger.py`: record every run, including messages between user and agent, agent and LLM, and token usage. Logs live in /run in whatever directory the agent runs at.
+- `src/swe_agent/telemetry/logger.py`: record every run, including messages between user and agent, agent and LLM, and token usage. Logs live in runs/ in whatever directory the agent runs at.
 - `src/swe_agent/core/agent.py`: the main agent ReAct loop. Stop until answer's ready/max_step reached/max_cost reached.
 - `src/swe_agent/models/pricing.py`: Look up `model` in PRICES. Raise UnknownModelError if it is missing.
 - `src/swe_agent/models/http.py`: build http request to Anthropic's API. Uniting format.
+- `src/swe_agent/cli/main.py`: `swe-agent run "<task>"` with step, cost and time budgets.
+- Live run on the toy repo: bug fixed in 4 steps, 5.4 s, $0.00074; prompt caching made it 31% cheaper. Steps, trace and cache numbers: [docs/live-run](../live-run/README.md).
 
 ## Issues and fixes
 
@@ -20,4 +22,4 @@
 
 ## Next
 
-- Live run to fix a toy repo
+- OpenAI adapter, then streaming
