@@ -25,11 +25,6 @@ class ToolResult(BaseModel):
 
 
 class ProviderBlock(BaseModel):
-    """A block only one provider understands, such as an Anthropic `thinking` block.
-
-    Kept exactly as received and sent back unchanged, so history stays append-only.
-    """
-
     type: Literal["provider"] = "provider"
     provider: str
     data: dict[str, Any]
