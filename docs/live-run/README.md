@@ -28,7 +28,7 @@ uv run --env-file .env swe-agent run "make the tests pass" --cwd /tmp/toy --max-
 ## What happens inside
 
 1. **Key.** `uv run --env-file .env` puts `ANTHROPIC_API_KEY` in the environment. `run` in [cli/main.py](../../src/swe_agent/cli/main.py) reads it and removes it from the environment, so the agent's shell commands cannot see it.
-2. **Setup.** The CLI loads [prompts/system_v1.md](../../prompts/system_v1.md), then builds the model adapter and the agent with its budgets: 30 steps, $0.25, 600 s. A model with no price entry fails here.
+2. **Setup.** The CLI loads [prompts/system_v1.md](../../src/swe_agent/prompts/system_v1.md), then builds the model adapter and the agent with its budgets: 30 steps, $0.25, 600 s. A model with no price entry fails here.
 3. **Session start.** `Agent.run` in [core/agent.py](../../src/swe_agent/core/agent.py) opens `runs/<session_id>.jsonl` and writes a `session_start` record. The history is one user message: the task.
 4. **Model call.** The budgets are checked. Then [models/anthropic.py](../../src/swe_agent/models/anthropic.py) posts the system prompt, the history and the `bash` tool spec to `/v1/messages`. [models/http.py](../../src/swe_agent/models/http.py) retries rate limits, server errors and network errors with backoff, up to 4 attempts.
 5. **Response.** Text and tool calls become provider-neutral blocks. Any other block, such as thinking, is kept as it came and sent back unchanged on the next call. Token usage is priced from [models/pricing.py](../../src/swe_agent/models/pricing.py).
