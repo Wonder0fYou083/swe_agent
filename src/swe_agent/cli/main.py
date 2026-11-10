@@ -1,6 +1,7 @@
 """The `swe-agent` command. Subcommands such as `run` get added here as phases land."""
 
 import os
+from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -12,10 +13,14 @@ from swe_agent.models.anthropic import AnthropicModel
 from swe_agent.models.pricing import UnknownModelError
 from swe_agent.telemetry.trace import Budgets, StepRecord
 
-# prompts/ sits at the repository root, next to src/. The file name is also the prompt
-# version recorded in the trace, so the two cannot drift apart.
-PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
+# Prompts live inside the package (src/swe_agent/prompts/), so an installed copy has them
+# too. The file name is also the prompt version recorded in the trace, so the two cannot
+# drift apart.
 SYSTEM_PROMPT = "system_v1"
+
+# The per-user folder: an optional `env` file with the API key, and `runs/` for trajectories.
+HOME_ENV = "SWE_AGENT_HOME"
+API_KEY = "ANTHROPIC_API_KEY"
 
 OBSERVATION_LINES = 5  # lines of each command's output shown per step
 
@@ -59,21 +64,19 @@ def run(
         float, typer.Option(help="Stop once the run has cost this, in USD.")
     ] = 0.25,
     max_time: Annotated[float, typer.Option(help="Stop after this many seconds.")] = 600.0,
-    runs_dir: Annotated[Path, typer.Option(help="Where trajectories are written.")] = Path("runs"),
+    runs_dir: Annotated[
+        Path | None,
+        typer.Option(help="Where trajectories are written. Default: ~/.swe-agent/runs."),
+    ] = None,
     no_cache: Annotated[
         bool, typer.Option("--no-cache", help="Turn off automatic prompt caching.")
     ] = False,
 ) -> None:
     """Run the agent on the task until it finishes or a budget runs out."""
     # Read the key here, never at import time: CI has no key, and --help must still work.
-    # pop, not get: every bash command the agent runs inherits this process's environment,
-    # so an `env` call would otherwise copy the key into the history and the trajectory.
-    api_key = os.environ.pop("ANTHROPIC_API_KEY", "")
+    api_key = read_api_key()
     if not api_key:
-        _fail(
-            "ANTHROPIC_API_KEY is not set. "
-            "Put it in .env and run `uv run --env-file .env swe-agent run ...`."
-        )
+        _fail(f"{API_KEY} is not set. Export it, or put {API_KEY}=... in {agent_home() / 'env'}.")
 
     try:
         system_prompt = load_system_prompt()
@@ -98,9 +101,9 @@ def run(
         system_prompt=system_prompt,
         prompt_version=SYSTEM_PROMPT,
         budgets=Budgets(max_steps=max_steps, max_cost_usd=max_cost, max_wall_time_s=max_time),
-        # Resolved against the shell's directory, not --cwd, so trajectories never land
-        # inside the repository the agent is editing.
-        trajectory_dir=runs_dir.resolve(),
+        # The default is under the user's home, so trajectories never land inside the
+        # repository the agent is editing, whichever folder the command starts in.
+        trajectory_dir=(runs_dir or agent_home() / "runs").resolve(),
         on_step=print_step,
     )
     result = agent.run(task)
@@ -109,8 +112,43 @@ def run(
 
 
 def load_system_prompt(name: str = SYSTEM_PROMPT) -> str:
-    """The text of prompts/<name>.md."""
-    return (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    """The text of the packaged prompts/<name>.md."""
+    return files("swe_agent").joinpath("prompts", f"{name}.md").read_text(encoding="utf-8")
+
+
+def agent_home() -> Path:
+    """The per-user folder: $SWE_AGENT_HOME if set, else ~/.swe-agent."""
+    return Path(os.environ.get(HOME_ENV) or Path.home() / ".swe-agent")
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """The KEY=VALUE lines of `path`, or {} if it cannot be read.
+
+    Blank lines and # comments are skipped. A leading `export` and quotes around the
+    value are dropped.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    values: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip().removeprefix("export ").strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip("\"'")
+    return values
+
+
+def read_api_key() -> str:
+    """The API key from the environment, else from <home>/env. "" if neither has it.
+
+    pop, not get: every bash command the agent runs inherits this process's environment,
+    so an `env` call would otherwise copy the key into the history and the trajectory.
+    """
+    key = os.environ.pop(API_KEY, "")
+    return key or read_env_file(agent_home() / "env").get(API_KEY, "")
 
 
 def format_step(step: StepRecord, cost_so_far: float) -> str:

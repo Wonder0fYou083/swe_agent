@@ -28,6 +28,15 @@ uv sync
 uv run swe-agent --version
 ```
 
+To run it from any folder, install it and put your key in `~/.swe-agent/env` as `ANTHROPIC_API_KEY=...`:
+
+```bash
+uv tool install --editable .
+swe-agent run "make the tests pass"    # works on the current folder; no sandbox yet
+```
+
+Each run's log is written to `~/.swe-agent/runs/<session_id>.jsonl`.
+
 ## Development
 
 ```bash

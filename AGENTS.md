@@ -27,7 +27,7 @@ uv run pre-commit run --all-files    # git hooks: ruff + gitleaks
 
 ```text
 src/swe_agent/   cli/ core/ models/ tools/ env/ context/ retrieval/ harness/ mcp/ acp/ telemetry/
-prompts/         versioned system-prompt templates
+                 prompts/  versioned system-prompt templates, shipped in the package
 evals/           runner, task lists (smoke / dev / pro), results schema
 tests/           unit tests + recorded model responses
 docs/            adr/  devlog/
