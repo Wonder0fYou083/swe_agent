@@ -26,18 +26,24 @@ Two last pieces, then the project is frozen:
 
 ## Quickstart
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). From a clone of this repo:
+Requires Python 3.12+. Install the `swe-agent` command with [pipx](https://pipx.pypa.io/) (or plain `pip`); uv isn't needed:
+
+```bash
+pipx install git+https://github.com/Wonder0fYou083/swe_agent.git
+```
+
+Put your key in `~/.swe-agent/env` as `ANTHROPIC_API_KEY=...`, then run it from any folder:
+
+```bash
+swe-agent run "make the tests pass"    # works on the current folder; no sandbox yet
+```
+
+To work on the code, clone the repo and use [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync
 uv run swe-agent --version
-```
-
-To run it from any folder, install it and put your key in `~/.swe-agent/env` as `ANTHROPIC_API_KEY=...`:
-
-```bash
-uv tool install --editable .
-swe-agent run "make the tests pass"    # works on the current folder; no sandbox yet
+uv tool install --editable .    # optional: puts your clone's swe-agent on PATH
 ```
 
 To use an OpenAI model instead, put `OPENAI_API_KEY=...` in the same file. Any other server that speaks the same Chat Completions format works with `--base-url`:
