@@ -176,7 +176,7 @@ Step 2 of [cached.jsonl](cached.jsonl), with long strings shortened:
 
 - `observation` is exactly the text the model received.
 - Every `*_ns` field is a monotonic clock reading. `session_start` holds `t0_ns` and the only wall-clock time, `started_at`.
-- `model_first_token_ns` is null because responses are not streamed yet.
+- `model_first_token_ns` is null because this run did not stream. A run with `--stream` fills it in.
 - Step 1 contains a thinking block. The API returns it with empty text and a signature, and still counts the thinking in `output_tokens`.
 
 Per-step tokens and cost from a trace (columns: step, uncached input, cache write, cache read, output, cost):

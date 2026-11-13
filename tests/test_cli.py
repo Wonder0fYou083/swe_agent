@@ -18,7 +18,7 @@ from swe_agent.cli.main import (
 )
 from swe_agent.models.anthropic import AnthropicModel
 from swe_agent.models.openai import OpenAIModel
-from swe_agent.models.pricing import PRICES, Price
+from swe_agent.models.pricing import PRICES, Price, UnknownModelError
 from swe_agent.models.types import Endpoint, Message, TextBlock, Usage
 from swe_agent.telemetry.trace import StepRecord, ToolRecord
 
@@ -227,8 +227,27 @@ def test_run_help_lists_every_option() -> None:
         "--max-time",
         "--runs-dir",
         "--no-cache",
+        "--stream",
     ):
         assert option in text
+
+
+@pytest.mark.parametrize(("flags", "stream"), [([], False), (["--stream"], True)])
+def test_stream_flag_reaches_the_anthropic_adapter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[str], stream: bool
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    seen: dict[str, object] = {}
+
+    def record_and_stop(*args: object, **kwargs: object) -> None:
+        seen.update(kwargs)
+        raise UnknownModelError(args[0])  # ends the run before any network use
+
+    monkeypatch.setattr("swe_agent.cli.main.AnthropicModel", record_and_stop)
+    result = CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path), *flags])
+
+    assert result.exit_code == 1
+    assert seen["stream"] is stream
 
 
 def test_system_prompt_loads_and_states_how_a_run_ends() -> None:

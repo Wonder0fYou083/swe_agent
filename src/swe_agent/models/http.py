@@ -59,3 +59,40 @@ def post_json(
         if attempts < policy.max_attempts:
             sleep(backoff_delay(attempts, policy, retry_after))
     raise ModelError(f"gave up after {attempts} attempts: {error}")
+
+
+def post_stream[T](
+    client: httpx.Client,
+    url: str,
+    *,
+    headers: dict[str, str],
+    body: dict[str, Any],
+    policy: RetryPolicy,
+    read: Callable[[httpx.Response], T],
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[T, int]:
+    """post_json for a streamed response: `read` consumes the body while it is still open.
+
+    Retries the same way as post_json. A transport error in the middle of the stream is
+    retried too, by sending the whole request again. An error that `read` raises itself,
+    such as a ModelError for an `error` event, is not retried.
+    """
+    attempts = 0
+    error = ""
+    while attempts < policy.max_attempts:
+        attempts += 1
+        retry_after = None
+        try:
+            with client.stream("POST", url, headers=headers, json=body) as response:
+                if response.status_code < 400:
+                    return (read(response), attempts)
+                response.read()  # an error body is not streamed
+                error = f"HTTP {response.status_code}: {response.text[:500]}"
+                if response.status_code not in RETRYABLE_STATUS:
+                    raise ModelError(error)
+                retry_after = response.headers.get("retry-after")
+        except httpx.TransportError as e:
+            error = f"{type(e).__name__}: {e}"
+        if attempts < policy.max_attempts:
+            sleep(backoff_delay(attempts, policy, retry_after))
+    raise ModelError(f"gave up after {attempts} attempts: {error}")

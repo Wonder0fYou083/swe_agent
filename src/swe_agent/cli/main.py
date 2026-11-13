@@ -102,6 +102,12 @@ def run(
     no_cache: Annotated[
         bool, typer.Option("--no-cache", help="Turn off automatic prompt caching (anthropic).")
     ] = False,
+    stream: Annotated[
+        bool,
+        typer.Option(
+            "--stream", help="Stream responses and record the time to first token (anthropic)."
+        ),
+    ] = False,
 ) -> None:
     """Run the agent on the task until it finishes or a budget runs out."""
     # Read the keys here, never at import time: CI has no key, and --help must still work.
@@ -129,6 +135,7 @@ def run(
             base_url=base_url,
             cache=not no_cache,
             reasoning_effort=reasoning_effort,
+            stream=stream,
         )
     except UnknownModelError:
         _fail(f"no price for model {model!r}; add it to PRICES in models/pricing.py")
@@ -164,6 +171,7 @@ def build_model(
     base_url: str | None,
     cache: bool,
     reasoning_effort: str | None = None,
+    stream: bool = False,
 ) -> Model:
     """The adapter for `provider`. Raises UnknownModelError for a model with no price."""
     if provider is Provider.openai:
@@ -174,8 +182,8 @@ def build_model(
             reasoning_effort=reasoning_effort,
         )
     if base_url is None:
-        return AnthropicModel(model, api_key, cache=cache)
-    return AnthropicModel(model, api_key, base_url=base_url, cache=cache)
+        return AnthropicModel(model, api_key, cache=cache, stream=stream)
+    return AnthropicModel(model, api_key, base_url=base_url, cache=cache, stream=stream)
 
 
 def load_system_prompt(name: str = SYSTEM_PROMPT) -> str:
