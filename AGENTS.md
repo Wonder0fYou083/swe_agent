@@ -4,13 +4,14 @@ Instructions for AI agents working in this repository: Claude Code and this proj
 
 ## What this project is
 
-`swe_agent` is a model-agnostic, terminal-first production SWE agent, built from scratch.
+`swe_agent` is a terminal-first coding agent built from scratch. It has one tool, `bash`, and calls the Anthropic API through its own adapter behind a provider-neutral `Model` interface. Two pieces are left before the project is frozen: a container sandbox for `bash`, and a small fixed eval set with a pass rate.
 
 ## Stack
 
 - Python 3.12+, managed with `uv`
-- ruff (lint + format), pyright (types), pytest + pytest-asyncio
-- pydantic v2, httpx / asyncio, Docker SDK, tree-sitter, typer + rich
+- ruff (lint + format), pyright (types), pytest
+- pydantic v2, httpx, typer
+- the sandbox: the Docker or Podman CLI, called through `subprocess` (no Docker SDK)
 - **No agent frameworks inside `src/swe_agent/`**: no LangChain, LangGraph, LlamaIndex, CrewAI or vendor agent SDKs.
 
 ## Commands
@@ -26,11 +27,11 @@ uv run pre-commit run --all-files    # git hooks: ruff + gitleaks
 ## Repo layout
 
 ```text
-src/swe_agent/   cli/ core/ models/ tools/ env/ context/ retrieval/ harness/ mcp/ acp/ telemetry/
+src/swe_agent/   cli/ core/ models/ tools/ telemetry/
                  prompts/  versioned system-prompt templates, shipped in the package
-evals/           runner, task lists (smoke / dev / pro), results schema
-tests/           unit tests + recorded model responses
-docs/            adr/  devlog/
+evals/           fixed tasks with hidden checks, and the runner that reports the pass rate
+tests/           unit tests; fixtures/ holds the toy repo
+docs/            adr/  devlog/  live-run/
 scratch/         throwaway experiments, never imported by src/
 ```
 
@@ -38,7 +39,7 @@ scratch/         throwaway experiments, never imported by src/
 
 - **Commits:** Conventional Commits, e.g. `feat(tools): add str_replace editor`, `fix(core): stop on max cost`, `docs(devlog): phase 1`.
 - **Branches:** `feat/<short-name>` or `fix/<short-name>`; PR into `main`; squash-merge. `main` stays green.
-- **Tests:** every behavior change gets a unit test. Tests never call real model APIs or the network; use the scripted fake model or recorded responses.
+- **Tests:** every behavior change gets a unit test. Tests never call real model APIs or the network; use the scripted fake model or recorded responses. Tests that need Docker are marked `docker` and skip when no daemon is running.
 - **Types:** type hints on every public function; pyright must pass.
 - **Decisions:** record significant design choices as ADRs in `docs/adr/NNNN-short-title.md`.
 - **Style:** small functions, explicit over clever.
@@ -53,3 +54,4 @@ scratch/         throwaway experiments, never imported by src/
 
 - `docs/devlog/` — one entry per phase: what was built, issues hit and how they were fixed
 - `docs/adr/` — architecture decision records
+- `docs/live-run/` — one real run, start to finish, with its traces
