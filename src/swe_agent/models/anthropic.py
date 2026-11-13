@@ -1,13 +1,16 @@
 """Anthropic Messages API adapter over raw HTTP."""
 
+import json
 import time
 from collections.abc import Iterable, Sequence
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
-from swe_agent.models.http import RetryPolicy, post_json
+from swe_agent.models.base import ModelError
+from swe_agent.models.http import RetryPolicy, post_json, post_stream
 from swe_agent.models.pricing import cost_usd, price_for
+from swe_agent.models.sse import iter_sse
 from swe_agent.models.types import (
     Block,
     Endpoint,
@@ -119,6 +122,7 @@ class AnthropicModel:
         base_url: str = "https://api.anthropic.com",
         max_tokens: int = 16_000,
         cache: bool = True,
+        stream: bool = False,
         retry: RetryPolicy | None = None,
     ) -> None:
         self.name = model
@@ -130,6 +134,7 @@ class AnthropicModel:
         self._url = f"{base_url}/v1/messages"
         self._max_tokens = max_tokens
         self._cache = cache
+        self._stream = stream  # streaming records the time to the first token
         self._retry = retry or RetryPolicy()
 
     def build_body(
@@ -186,9 +191,21 @@ class AnthropicModel:
         }
         body = self.build_body(system, messages, tools)
         started = time.monotonic_ns()
-        data, attempts = post_json(
-            self._client, self._url, headers=headers, body=body, policy=self._retry
-        )
+        first_token: int | None = None
+        if self._stream:
+            # Both paths end in the same body, so the parsing below is shared.
+            (data, first_token), attempts = post_stream(
+                self._client,
+                self._url,
+                headers=headers,
+                body=body | {"stream": True},
+                policy=self._retry,
+                read=lambda response: accumulate_stream(iter_sse(response.iter_lines())),
+            )
+        else:
+            data, attempts = post_json(
+                self._client, self._url, headers=headers, body=body, policy=self._retry
+            )
         ended = time.monotonic_ns()
         usage = parse_usage(data["usage"])
         return ModelResponse(
@@ -201,6 +218,7 @@ class AnthropicModel:
             cost_usd=cost_usd(usage, self._price),
             model=data.get("model", self.name),
             started_ns=started,
+            first_token_ns=first_token,
             ended_ns=ended,
             attempts=attempts,
         )
@@ -209,9 +227,74 @@ class AnthropicModel:
 def accumulate_stream(
     events: Iterable[tuple[str | None, str]],
 ) -> tuple[dict[str, Any], int | None]:
-    """Rebuild the non-streaming response body from SSE events.  [Issue 10]
+    """Rebuild the non-streaming response body from SSE events.
 
-    Returns (body, time.monotonic_ns() of the first content_block_delta).
-    The event table and pseudocode are in 10-streaming.md.
+    Returns (body, time.monotonic_ns() of the first content_block_delta). Raises
+    ModelError on an `error` event, or when the stream ends before `message_stop`.
+
+    message_start        -> body, without content yet
+    content_block_start  -> a new block at `index`
+    content_block_delta  -> text, thinking, signature or a piece of the tool input's JSON
+    content_block_stop   -> a tool_use block gets its input parsed
+    message_delta        -> stop_reason, and running totals that replace the usage counts
+    message_stop         -> done
     """
-    raise NotImplementedError
+    body: dict[str, Any] = {}
+    blocks: dict[int, dict[str, Any]] = {}
+    json_parts: dict[int, list[str]] = {}
+    first_token: int | None = None
+    for _, data in events:
+        event = cast(dict[str, Any], _loads(data))
+        match event["type"]:
+            case "message_start":
+                body = event["message"]
+            case "content_block_start":
+                blocks[event["index"]] = dict(event["content_block"])
+                json_parts[event["index"]] = []
+            case "content_block_delta":
+                if first_token is None:
+                    first_token = time.monotonic_ns()
+                index = event["index"]
+                _apply_delta(blocks[index], json_parts[index], event["delta"])
+            case "content_block_stop":
+                block = blocks[event["index"]]
+                if block["type"] == "tool_use":
+                    block["input"] = _loads("".join(json_parts[event["index"]]) or "{}")
+            case "message_delta":
+                body.update(event["delta"])  # stop_reason, stop_sequence
+                # Counts here are totals so far: they replace earlier values, never add to
+                # them. A null count is skipped so it cannot erase one from message_start.
+                usage = cast(dict[str, Any], event.get("usage") or {})
+                body["usage"] = body.get("usage", {}) | {
+                    k: v for k, v in usage.items() if v is not None
+                }
+            case "message_stop":
+                body["content"] = [blocks[i] for i in sorted(blocks)]
+                return body, first_token
+            case "error":
+                raise ModelError(f"error event in the stream: {event.get('error')}")
+            case _:
+                pass  # ping, and event types this adapter does not use
+    raise ModelError("the stream ended before message_stop")
+
+
+def _apply_delta(block: dict[str, Any], json_parts: list[str], delta: dict[str, Any]) -> None:
+    match delta["type"]:
+        case "text_delta":
+            block["text"] = block.get("text", "") + delta["text"]
+        case "thinking_delta":
+            block["thinking"] = block.get("thinking", "") + delta["thinking"]
+        case "signature_delta":
+            block["signature"] = delta["signature"]
+        case "input_json_delta":
+            json_parts.append(delta["partial_json"])
+        case _:
+            pass  # e.g. citations_delta, which this adapter never asks for
+
+
+def _loads(text: str) -> Any:
+    """json.loads, but bad JSON raises ModelError: the agent loop stops cleanly on that."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ModelError(f"bad JSON in the stream: {e}") from e
