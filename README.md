@@ -38,6 +38,12 @@ uv tool install --editable .
 swe-agent run "make the tests pass"    # works on the current folder; no sandbox yet
 ```
 
+To use an OpenAI model instead, put `OPENAI_API_KEY=...` in the same file. Any other server that speaks the same Chat Completions format works with `--base-url`:
+
+```bash
+swe-agent run "make the tests pass" --provider openai --model gpt-6-luna --reasoning-effort none
+```
+
 Each run's log is written to `~/.swe-agent/runs/<session_id>.jsonl`.
 
 ## Development

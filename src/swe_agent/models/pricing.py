@@ -21,6 +21,14 @@ PRICES: dict[str, Price] = {
         cache_read_per_mtok=0.01,  # 0.1x input
         cache_write_per_mtok=0.125,  # 1.25x input
     ),
+    # OpenAI standard tier, up to 272K input tokens, from developers.openai.com/api/docs/pricing
+    # on 2026-11-12. Caching is automatic and writing to the cache isn't billed.
+    "gpt-6-luna": Price(
+        input_per_mtok=0.10,
+        output_per_mtok=0.50,
+        cache_read_per_mtok=0.01,  # 0.1x input
+        cache_write_per_mtok=0.0,
+    ),
 }
 
 

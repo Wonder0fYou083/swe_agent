@@ -7,14 +7,19 @@ import pytest
 from typer.testing import CliRunner
 
 from swe_agent.cli.main import (
+    Provider,
     agent_home,
     app,
+    build_model,
     format_step,
     load_system_prompt,
     read_api_key,
     read_env_file,
 )
-from swe_agent.models.types import Message, TextBlock, Usage
+from swe_agent.models.anthropic import AnthropicModel
+from swe_agent.models.openai import OpenAIModel
+from swe_agent.models.pricing import PRICES, Price
+from swe_agent.models.types import Endpoint, Message, TextBlock, Usage
 from swe_agent.telemetry.trace import StepRecord, ToolRecord
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -68,6 +73,92 @@ def test_run_removes_the_api_key_from_the_environment_bash_inherits(
     CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path), "--model", "no-such-model"])
 
     assert "ANTHROPIC_API_KEY" not in os.environ
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "openai"])
+def test_run_removes_every_api_key_whichever_provider_is_used(
+    provider: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "o-key")
+
+    CliRunner().invoke(
+        app,
+        ["run", "x", "--cwd", str(tmp_path), "--provider", provider, "--model", "no-such-model"],
+    )
+
+    assert "ANTHROPIC_API_KEY" not in os.environ
+    assert "OPENAI_API_KEY" not in os.environ
+
+
+def test_openai_without_a_key_exits_1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = CliRunner().invoke(
+        app, ["run", "x", "--cwd", str(tmp_path), "--provider", "openai", "--model", "m"]
+    )
+
+    assert result.exit_code == 1
+    assert "OPENAI_API_KEY is not set" in result.output
+
+
+def test_openai_needs_no_key_for_a_local_base_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    # Reaching the price check means the missing key was accepted.
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "x",
+            "--cwd",
+            str(tmp_path),
+            "--provider",
+            "openai",
+            "--base-url",
+            "http://localhost:11434/v1",
+            "--model",
+            "no-such-model",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "no price for model 'no-such-model'" in result.output
+
+
+def test_openai_without_a_model_exits_1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    result = CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path), "--provider", "openai"])
+
+    assert result.exit_code == 1
+    assert "pass --model" in result.output
+
+
+def test_build_model_picks_the_adapter_and_the_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(
+        PRICES,
+        "test-model",
+        Price(input_per_mtok=0, output_per_mtok=0, cache_read_per_mtok=0, cache_write_per_mtok=0),
+    )
+
+    local = build_model(
+        Provider.openai, "test-model", "", base_url="http://localhost:11434/v1", cache=True
+    )
+    default = build_model(Provider.openai, "test-model", "k", base_url=None, cache=True)
+    anthropic = build_model(Provider.anthropic, "test-model", "k", base_url=None, cache=False)
+
+    assert isinstance(local, OpenAIModel)
+    assert local.endpoint == Endpoint(
+        provider="openai", base_url="http://localhost:11434/v1", cache_requested=False
+    )
+    assert default.endpoint.base_url == "https://api.openai.com/v1"
+    assert isinstance(anthropic, AnthropicModel)
+    assert anthropic.endpoint == Endpoint(
+        provider="anthropic", base_url="https://api.anthropic.com", cache_requested=False
+    )
 
 
 def test_agent_home_is_the_env_var_or_a_folder_in_the_user_home(
@@ -127,7 +218,10 @@ def test_run_help_lists_every_option() -> None:
     assert result.exit_code == 0
     for option in (
         "--cwd",
+        "--provider",
         "--model",
+        "--base-url",
+        "--reasoning-effort",
         "--max-steps",
         "--max-cost",
         "--max-time",
