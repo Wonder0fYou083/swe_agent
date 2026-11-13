@@ -1,6 +1,7 @@
 """The `swe-agent` command. Subcommands such as `run` get added here as phases land."""
 
 import os
+from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, NoReturn
@@ -10,6 +11,8 @@ import typer
 from swe_agent import __version__
 from swe_agent.core.agent import Agent, RunResult
 from swe_agent.models.anthropic import AnthropicModel
+from swe_agent.models.base import Model
+from swe_agent.models.openai import DEFAULT_BASE_URL, OpenAIModel
 from swe_agent.models.pricing import UnknownModelError
 from swe_agent.telemetry.trace import Budgets, StepRecord
 
@@ -21,6 +24,16 @@ SYSTEM_PROMPT = "system_v1"
 # The per-user folder: an optional `env` file with the API key, and `runs/` for trajectories.
 HOME_ENV = "SWE_AGENT_HOME"
 API_KEY = "ANTHROPIC_API_KEY"
+
+
+class Provider(StrEnum):
+    anthropic = "anthropic"
+    openai = "openai"  # anything that speaks OpenAI's /chat/completions
+
+
+# Every key is read, and so removed from the environment, on every run (see read_api_key).
+API_KEYS = {Provider.anthropic: API_KEY, Provider.openai: "OPENAI_API_KEY"}
+DEFAULT_MODELS = {Provider.anthropic: "claude-haiku-5-5"}
 
 OBSERVATION_LINES = 5  # lines of each command's output shown per step
 
@@ -58,7 +71,25 @@ def run(
         Path,
         typer.Option(help="Repository to work in.", exists=True, file_okay=False),
     ] = Path("."),
-    model: Annotated[str, typer.Option(help="Model name.")] = "claude-haiku-5-5",
+    provider: Annotated[
+        Provider, typer.Option(help="Which API to call. openai covers any compatible server.")
+    ] = Provider.anthropic,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            help="Model name. Default: claude-haiku-5-5 for anthropic; required for openai."
+        ),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option(help="API base URL, e.g. http://localhost:11434/v1 for a local server."),
+    ] = None,
+    reasoning_effort: Annotated[
+        str | None,
+        typer.Option(
+            help="openai: sent as reasoning_effort. Some OpenAI models need none to use tools."
+        ),
+    ] = None,
     max_steps: Annotated[int, typer.Option(help="Stop after this many model calls.")] = 30,
     max_cost: Annotated[
         float, typer.Option(help="Stop once the run has cost this, in USD.")
@@ -69,14 +100,21 @@ def run(
         typer.Option(help="Where trajectories are written. Default: ~/.swe-agent/runs."),
     ] = None,
     no_cache: Annotated[
-        bool, typer.Option("--no-cache", help="Turn off automatic prompt caching.")
+        bool, typer.Option("--no-cache", help="Turn off automatic prompt caching (anthropic).")
     ] = False,
 ) -> None:
     """Run the agent on the task until it finishes or a budget runs out."""
-    # Read the key here, never at import time: CI has no key, and --help must still work.
-    api_key = read_api_key()
-    if not api_key:
-        _fail(f"{API_KEY} is not set. Export it, or put {API_KEY}=... in {agent_home() / 'env'}.")
+    # Read the keys here, never at import time: CI has no key, and --help must still work.
+    keys = {name: read_api_key(name) for name in API_KEYS.values()}
+    key_name = API_KEYS[provider]
+    api_key = keys[key_name]
+    # A local server given by --base-url usually needs no key.
+    if not api_key and not (provider is Provider.openai and base_url):
+        _fail(f"{key_name} is not set. Export it, or put {key_name}=... in {agent_home() / 'env'}.")
+
+    model = model or DEFAULT_MODELS.get(provider)
+    if model is None:
+        _fail(f"pass --model: there is no default model for --provider {provider}")
 
     try:
         system_prompt = load_system_prompt()
@@ -84,7 +122,14 @@ def run(
         _fail(f"cannot read the system prompt: {e}")
 
     try:
-        llm = AnthropicModel(model, api_key, cache=not no_cache)
+        llm = build_model(
+            provider,
+            model,
+            api_key,
+            base_url=base_url,
+            cache=not no_cache,
+            reasoning_effort=reasoning_effort,
+        )
     except UnknownModelError:
         _fail(f"no price for model {model!r}; add it to PRICES in models/pricing.py")
 
@@ -109,6 +154,28 @@ def run(
     result = agent.run(task)
     typer.echo(format_summary(result))
     raise typer.Exit(code=0 if result.stop == "submitted" else 1)
+
+
+def build_model(
+    provider: Provider,
+    model: str,
+    api_key: str,
+    *,
+    base_url: str | None,
+    cache: bool,
+    reasoning_effort: str | None = None,
+) -> Model:
+    """The adapter for `provider`. Raises UnknownModelError for a model with no price."""
+    if provider is Provider.openai:
+        return OpenAIModel(
+            model,
+            api_key,
+            base_url=base_url or DEFAULT_BASE_URL,
+            reasoning_effort=reasoning_effort,
+        )
+    if base_url is None:
+        return AnthropicModel(model, api_key, cache=cache)
+    return AnthropicModel(model, api_key, base_url=base_url, cache=cache)
 
 
 def load_system_prompt(name: str = SYSTEM_PROMPT) -> str:
@@ -141,14 +208,14 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def read_api_key() -> str:
-    """The API key from the environment, else from <home>/env. "" if neither has it.
+def read_api_key(name: str = API_KEY) -> str:
+    """The key `name` from the environment, else from <home>/env. "" if neither has it.
 
     pop, not get: every bash command the agent runs inherits this process's environment,
     so an `env` call would otherwise copy the key into the history and the trajectory.
     """
-    key = os.environ.pop(API_KEY, "")
-    return key or read_env_file(agent_home() / "env").get(API_KEY, "")
+    key = os.environ.pop(name, "")
+    return key or read_env_file(agent_home() / "env").get(name, "")
 
 
 def format_step(step: StepRecord, cost_so_far: float) -> str:

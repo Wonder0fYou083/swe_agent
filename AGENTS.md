@@ -4,7 +4,7 @@ Instructions for AI agents working in this repository: Claude Code and this proj
 
 ## What this project is
 
-`swe_agent` is a terminal-first coding agent built from scratch. It has one tool, `bash`, and calls the Anthropic API through its own adapter behind a provider-neutral `Model` interface. Two pieces are left before the project is frozen: a container sandbox for `bash`, and a small fixed eval set with a pass rate.
+`swe_agent` is a terminal-first coding agent built from scratch. It has one tool, `bash`, and calls the Anthropic API or any OpenAI-compatible endpoint through its own adapters behind a provider-neutral `Model` interface. Two pieces are left before the project is frozen: a container sandbox for `bash`, and a small fixed eval set with a pass rate.
 
 ## Stack
 
