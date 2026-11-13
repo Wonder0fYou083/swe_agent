@@ -4,20 +4,22 @@ A SWE agent built from scratch, with no agent framework.
 
 > Not affiliated with Princeton's [SWE-agent](https://github.com/SWE-agent/SWE-agent).
 
-## Current Status (updated on 11/12/2026)
+## Current Status (updated on 11/13/2026)
 
-A MVP swe agent is finished. I first built a bash tool from scratch,
+**Update (11/13/2026):** I added a docker container for each bash command run: every bash command now runs in a fresh Docker container with no network, CPU, memory, process and time limits, and only the repository writable. Tests show that escape attempts fail cleanly: writing outside the workspace, reaching the network, a fork bomb, using too much memory, reading host secrets.
+
+**Update (11/12/2026):** I added an OpenAi adapter so that my agent
+now supports other models (gpt-6-luna). I also added streaming (`sse.py`) which records TTFT of each step which can be
+tracked in the session's log.
+
+**update (11/09/2026):** A MVP swe agent is finished. I first built a bash tool from scratch,
 which uses python subprocess to run bash command. It starts a new session every time (`start_new_session=True`)
 and there's no sandbox yet. I built a logger to record each session from start to end, which also
 includes every step, it's type (tool_call, text, etc), and it's token cost. I built raw http request from scratch
 utilizing python httpx (I know it's kinda stupid since I can just use Anthropic(), but it's just for the love of the game).
 I unite the message (from and to the Anthropic API) format to my customized types for the agent to read.
 I asked claude to build the cli and then I conducted a live run: the agent is asked to fix a small bug in a toy repo.
-There're two runs: cache and no cache. Each run's log is in docs/live-run. I then added an OpenAi adapter so that my agent
-now supports other models (gpt-6-luna). I also added streaming (`sse.py`) which records TTFT of each step which can be
-tracked in the session's log.
-
-**Update (11/13/2026):** every bash command now runs in a fresh Docker container with no network, CPU, memory, process and time limits, and only the repository writable. Tests show that escape attempts fail cleanly: writing outside the workspace, reaching the network, a fork bomb, using too much memory, reading host secrets. How it works and what it does not protect: [docs/adr/0001-sandbox.md](docs/adr/0001-sandbox.md).
+There're two runs: cache and no cache. Each run's log is in docs/live-run. 
 
 ## Next move
 
