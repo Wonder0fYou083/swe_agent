@@ -27,9 +27,11 @@ from swe_agent.telemetry.trace import (
     StopKind,
     ToolRecord,
 )
-from swe_agent.tools.bash import BASH_SPEC, format_observation, run_bash
+from swe_agent.tools.bash import BASH_SPEC, BashResult, format_observation, run_bash
 
 TraceWriter = Callable[[SessionStart | StepRecord | SessionEnd], None]
+# run_bash (on the host) or run_bash_in_sandbox (in a container): same signature.
+RunCommand = Callable[[str, Path], BashResult]
 
 
 class RunResult(BaseModel):
@@ -54,9 +56,11 @@ class Agent:
         trajectory_dir: Path | None = None,
         on_step: Callable[[StepRecord], None] | None = None,
         clock: Callable[[], int] = time.monotonic_ns,
+        run_command: RunCommand = run_bash,
     ) -> None:
         self.model = model  # also supplies the trace's model name and endpoint
         self.cwd = cwd
+        self.run_command = run_command  # the CLI passes run_bash_in_sandbox by default
         self.system_prompt = system_prompt
         self.prompt_version = prompt_version
         self.budgets = budgets or Budgets()
@@ -177,7 +181,7 @@ class Agent:
         Unknown tool name, or no "command" string in the arguments -> a ToolRecord with
         is_error=True and an observation saying what was wrong. Do not raise: the model
         should read the error and try again.
-        Otherwise run_bash in self.cwd, and observation = format_observation(result).
+        Otherwise self.run_command in self.cwd, and observation = format_observation(result).
         is_error = result.timed_out. A non-zero exit code is a normal observation, not an error.
         """
         if call.name != "bash":
@@ -190,7 +194,7 @@ class Agent:
                 call, 'error: the bash tool needs a "command" string, for example {"command": "ls"}'
             )
 
-        result = run_bash(command, self.cwd)
+        result = self.run_command(command, self.cwd)
         return ToolRecord(
             tool_call_id=call.id,
             tool_name=call.name,

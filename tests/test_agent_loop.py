@@ -7,6 +7,7 @@ from swe_agent.models.fake import ScriptedModel, bash_call, text_reply
 from swe_agent.models.types import Message, TextBlock, ToolCall, ToolResult
 from swe_agent.telemetry.logger import read_trajectory
 from swe_agent.telemetry.trace import Budgets, SessionEnd, SessionStart, StepRecord
+from swe_agent.tools.bash import BashResult
 
 
 def _agent(
@@ -227,3 +228,30 @@ def test_no_trajectory_dir_writes_no_file(tmp_path: Path) -> None:
 
     assert result.trajectory is None
     assert not list(tmp_path.glob("*.jsonl"))
+
+
+def test_commands_go_to_the_run_command_it_was_given(tmp_path: Path) -> None:
+    # The CLI passes run_bash_in_sandbox here; a fake one shows where commands go.
+    calls: list[tuple[str, Path]] = []
+
+    def fake_run(command: str, cwd: Path) -> BashResult:
+        calls.append((command, cwd))
+        return BashResult(
+            command=command,
+            output="from the fake\n",
+            exit_code=0,
+            timed_out=False,
+            truncated_chars=0,
+            started_ns=0,
+            ended_ns=0,
+        )
+
+    model = ScriptedModel([bash_call("ls"), text_reply("done")])
+    agent = Agent(model, cwd=tmp_path, system_prompt="sys", run_command=fake_run)
+
+    agent.run("task")
+
+    assert calls == [("ls", tmp_path)]
+    result = _last_message(model, 1).content[0]
+    assert isinstance(result, ToolResult)
+    assert "from the fake" in result.content

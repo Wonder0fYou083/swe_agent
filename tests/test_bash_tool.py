@@ -2,7 +2,16 @@ import os
 import time
 from pathlib import Path
 
-from swe_agent.tools.bash import BashResult, format_observation, run_bash, truncate_middle
+import pytest
+
+from swe_agent.tools.bash import (
+    SANDBOX_IMAGE,
+    BashResult,
+    format_observation,
+    run_bash,
+    sandbox_argv,
+    truncate_middle,
+)
 
 
 def test_returns_output_and_exit_code(tmp_path: Path) -> None:
@@ -110,3 +119,51 @@ def test_observation_says_when_a_command_timed_out() -> None:
     observation = format_observation(_result(exit_code=None, timed_out=True))
 
     assert "timed out" in observation
+
+
+@pytest.mark.parametrize("output", ["boom\n", "boom", ""])
+def test_observation_has_no_blank_line_before_the_closing_tag(output: str) -> None:
+    observation = format_observation(_result(output=output))
+
+    assert "\n\n" not in observation
+    assert observation.endswith("</output>\n")
+
+
+# sandbox_argv only builds a list, so these run without Docker, in CI too.
+
+
+def test_sandbox_argv_starts_docker_and_ends_with_the_command_as_one_argument() -> None:
+    argv = sandbox_argv("echo 'a b' && ls", Path("/repo"), "swe-test")
+
+    assert argv[:2] == ["docker", "run"]
+    assert argv[-4:] == [SANDBOX_IMAGE, "bash", "-c", "echo 'a b' && ls"]
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--name", "swe-test"),
+        ("--network", "none"),
+        ("-v", "/repo:/workspace"),
+        ("-w", "/workspace"),
+        ("--tmpfs", "/tmp:size=64m"),
+        ("-e", "HOME=/tmp"),
+        ("--memory", "1g"),
+        ("--memory-swap", "1g"),
+        ("--cpus", "1"),
+        ("--pids-limit", "256"),
+        ("--user", f"{os.getuid()}:{os.getgid()}"),
+        ("--cap-drop", "ALL"),
+        ("--security-opt", "no-new-privileges"),
+        ("--pull", "never"),
+    ],
+)
+def test_sandbox_argv_sets_each_limit(flag: str, value: str) -> None:
+    argv = sandbox_argv("ls", Path("/repo"), "swe-test")
+
+    assert argv[argv.index(flag) + 1] == value
+
+
+@pytest.mark.parametrize("flag", ["--rm", "--read-only"])
+def test_sandbox_argv_has_each_switch(flag: str) -> None:
+    assert flag in sandbox_argv("ls", Path("/repo"), "swe-test")
