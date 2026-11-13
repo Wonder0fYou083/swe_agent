@@ -67,4 +67,4 @@ The command is the last element of the argv list, so no shell on the host parses
 
 - **One long-lived container, with `docker exec` per command.** Starts faster and keeps installed state. Rejected because state would leak from one command to the next, and a timed-out `exec` leaves its processes running inside the container. It is also the "persistent shell" feature, which is out of scope.
 - **The Docker SDK for Python.** Rejected: it adds a dependency, and the CLI flags also work with Podman.
-- **OS sandboxes** (Seatbelt on macOS, bubblewrap on Linux). They need no VM or daemon. Rejected because they mean writing a policy for each platform, and macOS has no cgroup limits for memory or processes. The rule for this project was to write no isolation code.
+- **OS sandboxes** (Seatbelt on macOS, bubblewrap on Linux). They need no VM or daemon. Rejected because they mean writing a policy for each platform, and macOS has no cgroup limits for memory or processes. A tested container runtime is safer than isolation code written here.
