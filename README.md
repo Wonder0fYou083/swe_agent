@@ -4,7 +4,7 @@ A SWE agent built from scratch, with no agent framework.
 
 > Not affiliated with Princeton's [SWE-agent](https://github.com/SWE-agent/SWE-agent).
 
-## Current Status
+## Current Status (updated on 11/12/2026)
 
 A MVP swe agent is finished. I first built a bash tool from scratch,
 which uses python subprocess to run bash command. It starts a new session every time (`start_new_session=True`)
@@ -13,7 +13,9 @@ includes every step, it's type (tool_call, text, etc), and it's token cost. I bu
 utilizing python httpx (I know it's kinda stupid since I can just use Anthropic(), but it's just for the love of the game).
 I unite the message (from and to the Anthropic API) format to my customized types for the agent to read.
 I asked claude to build the cli and then I conducted a live run: the agent is asked to fix a small bug in a toy repo.
-There're two runs: cache and no cache. Each run's log is in docs/live-run.
+There're two runs: cache and no cache. Each run's log is in docs/live-run. I then added an OpenAi adapter so that my agent
+now supports other models (gpt-6-luna). I also added streaming (`sse.py`) which records TTFT of each step which can be
+tracked in the session's log.
 
 ## Next move
 
