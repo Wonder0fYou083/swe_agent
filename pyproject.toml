@@ -1,6 +1,6 @@
 [project]
 name = "swe-agent"
-version = "0.0.0"
+version = "0.1.0"
 description = "A model-agnostic, terminal-first software-engineering agent, built from scratch."
 readme = "README.md"
 license = "MIT"
