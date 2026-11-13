@@ -1,6 +1,6 @@
 [project]
 name = "swe-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "A model-agnostic, terminal-first software-engineering agent, built from scratch."
 readme = "README.md"
 license = "MIT"
@@ -57,3 +57,6 @@ minversion = "9.0"
 testpaths = ["tests"]
 addopts = ["-ra", "--import-mode=importlib"]
 strict = true
+markers = [
+    "docker: needs a Docker daemon and the swe-agent-sandbox image; skipped when either is missing",
+]

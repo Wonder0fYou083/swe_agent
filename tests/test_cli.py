@@ -2,11 +2,14 @@ import os
 import re
 from importlib.metadata import version
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from typer.testing import CliRunner
 
 from swe_agent.cli.main import (
+    HOST_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
     Provider,
     agent_home,
     app,
@@ -15,12 +18,16 @@ from swe_agent.cli.main import (
     load_system_prompt,
     read_api_key,
     read_env_file,
+    sandbox_problem,
 )
+from swe_agent.core.agent import RunResult
 from swe_agent.models.anthropic import AnthropicModel
+from swe_agent.models.fake import ScriptedModel
 from swe_agent.models.openai import OpenAIModel
 from swe_agent.models.pricing import PRICES, Price, UnknownModelError
 from swe_agent.models.types import Endpoint, Message, TextBlock, Usage
 from swe_agent.telemetry.trace import StepRecord, ToolRecord
+from swe_agent.tools.bash import run_bash, run_bash_in_sandbox
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -228,6 +235,8 @@ def test_run_help_lists_every_option() -> None:
         "--runs-dir",
         "--no-cache",
         "--stream",
+        "--sandbox",
+        "--no-sandbox",
     ):
         assert option in text
 
@@ -250,9 +259,109 @@ def test_stream_flag_reaches_the_anthropic_adapter(
     assert seen["stream"] is stream
 
 
-def test_system_prompt_loads_and_states_how_a_run_ends() -> None:
+@pytest.mark.parametrize("name", [SYSTEM_PROMPT, HOST_SYSTEM_PROMPT])
+def test_system_prompt_loads_and_states_how_a_run_ends(name: str) -> None:
     # The loop stops on a reply without a tool call, so the prompt must say so.
-    assert "A reply without a tool call ends the run." in load_system_prompt()
+    assert "A reply without a tool call ends the run." in load_system_prompt(name)
+
+
+def test_the_sandbox_prompt_describes_the_container() -> None:
+    prompt = load_system_prompt(SYSTEM_PROMPT)
+
+    assert "/workspace" in prompt
+    assert "no network" in prompt
+    assert "macOS" not in prompt
+
+
+class _FakeAgent:
+    """Stands in for Agent: records how the CLI built it and submits at once."""
+
+    built: ClassVar[list[dict[str, object]]] = []
+
+    def __init__(self, model: object, **kwargs: object) -> None:
+        _FakeAgent.built.append(kwargs)
+
+    def run(self, task: str) -> RunResult:
+        return RunResult(
+            session_id="s", stop="submitted", steps=1, cost_usd=0.0, final_text="", trajectory=None
+        )
+
+
+@pytest.fixture
+def fake_agent(monkeypatch: pytest.MonkeyPatch) -> type[_FakeAgent]:
+    """Run the CLI with no model and no agent loop: nothing reaches the network."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("swe_agent.cli.main.build_model", lambda *a, **k: ScriptedModel([]))
+    monkeypatch.setattr("swe_agent.cli.main.Agent", _FakeAgent)
+    _FakeAgent.built = []
+    return _FakeAgent
+
+
+@pytest.mark.parametrize(
+    ("flags", "run_command", "prompt"),
+    [
+        ([], run_bash_in_sandbox, SYSTEM_PROMPT),
+        (["--sandbox"], run_bash_in_sandbox, SYSTEM_PROMPT),
+        (["--no-sandbox"], run_bash, HOST_SYSTEM_PROMPT),
+    ],
+)
+def test_run_uses_the_sandbox_and_its_prompt_unless_told_not_to(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_agent: type[_FakeAgent],
+    flags: list[str],
+    run_command: object,
+    prompt: str,
+) -> None:
+    monkeypatch.setattr("swe_agent.cli.main.sandbox_problem", lambda: None)
+
+    result = CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path), *flags])
+
+    assert result.exit_code == 0, result.output
+    [kwargs] = fake_agent.built
+    assert kwargs["run_command"] is run_command
+    assert kwargs["prompt_version"] == prompt
+    assert kwargs["system_prompt"] == load_system_prompt(prompt)
+
+
+def test_run_stops_before_the_model_when_the_sandbox_cannot_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_agent: type[_FakeAgent]
+) -> None:
+    monkeypatch.setattr(
+        "swe_agent.cli.main.sandbox_problem", lambda: "the sandbox needs Docker (no daemon)"
+    )
+
+    result = CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "the sandbox needs Docker (no daemon)" in result.output
+    assert "docker build -t swe-agent-sandbox" in result.output
+    assert "--no-sandbox" in result.output
+    assert fake_agent.built == []
+
+
+def test_no_sandbox_never_checks_for_docker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_agent: type[_FakeAgent]
+) -> None:
+    def must_not_run() -> str | None:
+        raise AssertionError("--no-sandbox must not look for Docker")
+
+    monkeypatch.setattr("swe_agent.cli.main.sandbox_problem", must_not_run)
+
+    result = CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path), "--no-sandbox"])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_sandbox_problem_explains_a_missing_docker_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_docker(*args: object, **kwargs: object) -> None:
+        raise FileNotFoundError("docker")
+
+    monkeypatch.setattr("swe_agent.cli.main.subprocess.run", no_docker)
+
+    assert sandbox_problem() == "the sandbox needs Docker, and the docker command is not installed"
 
 
 def test_format_step_shows_text_commands_and_the_first_lines_of_output() -> None:

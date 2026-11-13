@@ -17,12 +17,13 @@ There're two runs: cache and no cache. Each run's log is in docs/live-run. I the
 now supports other models (gpt-6-luna). I also added streaming (`sse.py`) which records TTFT of each step which can be
 tracked in the session's log.
 
+**Update (11/13/2026):** every bash command now runs in a fresh Docker container with no network, CPU, memory, process and time limits, and only the repository writable. Tests show that escape attempts fail cleanly: writing outside the workspace, reaching the network, a fork bomb, using too much memory, reading host secrets. How it works and what it does not protect: [docs/adr/0001-sandbox.md](docs/adr/0001-sandbox.md).
+
 ## Next move
 
-Two last pieces, then the project is frozen:
+One last piece, then the project is frozen:
 
-1. **Sandbox:** run every bash command in a Docker or Podman container with no network, CPU, memory and time limits, and only the workspace writable. It's done when tests show that escape attempts fail cleanly: writing outside the workspace, reaching the network, a fork bomb.
-2. **Eval harness:** 10–20 fixed tasks with automated pass/fail, and the pass rate reported here.
+- **Eval harness:** 10–20 fixed tasks with automated pass/fail, and the pass rate reported here.
 
 ## Quickstart
 
@@ -32,11 +33,19 @@ Requires Python 3.12+. Install the `swe-agent` command with [pipx](https://pipx.
 pipx install git+https://github.com/Wonder0fYou083/swe_agent.git
 ```
 
+Commands run in a Docker container, so you also need [Docker](https://docs.docker.com/get-docker/) running, and the sandbox image built once. The build needs the network; the containers it makes have none:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Wonder0fYou083/swe_agent/main/docker/sandbox.Dockerfile | docker build -t swe-agent-sandbox -
+```
+
 Put your key in `~/.swe-agent/env` as `ANTHROPIC_API_KEY=...`, then run it from any folder:
 
 ```bash
-swe-agent run "make the tests pass"    # works on the current folder; no sandbox yet
+swe-agent run "make the tests pass"    # works on the current folder, mounted at /workspace
 ```
+
+Only that folder (or the one given with `--cwd`) is visible and writable inside the container. `--no-sandbox` runs the commands directly on your machine instead, without any of these limits.
 
 To work on the code, clone the repo and use [uv](https://docs.astral.sh/uv/):
 
@@ -44,6 +53,7 @@ To work on the code, clone the repo and use [uv](https://docs.astral.sh/uv/):
 uv sync
 uv run swe-agent --version
 uv tool install --editable .    # optional: puts your clone's swe-agent on PATH
+docker build -t swe-agent-sandbox -f docker/sandbox.Dockerfile docker/    # the sandbox image
 ```
 
 To use an OpenAI model instead, put `OPENAI_API_KEY=...` in the same file. Any other server that speaks the same Chat Completions format works with `--base-url`:

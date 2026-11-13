@@ -6,10 +6,13 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import BaseModel
 
 from swe_agent.models.types import ToolSpec
+
+SANDBOX_IMAGE = "swe-agent-sandbox"
 
 BASH_SPEC = ToolSpec(
     name="bash",
@@ -120,6 +123,72 @@ def format_observation(result: BashResult) -> str:
     else:
         s += f"exit code: {result.exit_code}\n"
     s += "<output>\n"
-    s += f"{result.output}\n"
+    s += result.output
+    if result.output and not result.output.endswith("\n"):
+        s += "\n"  # most output already ends with one; adding another left a blank line
     s += "</output>\n"
     return s
+
+
+def sandbox_argv(command: str, workspace: Path, name: str) -> list[str]:
+    argv: list[str] = []
+    # fmt: off
+    argv += ["docker", "run",
+             "--rm", "--name", name,
+             "--network", "none",
+             "--read-only", "-v", str(workspace) + ":/workspace", "-w", "/workspace",
+             "--tmpfs", "/tmp:size=64m", "-e", "HOME=/tmp",
+             "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "256",
+             "--user", str(os.getuid())+":"+str(os.getgid()),
+             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+             "--pull", "never",
+             SANDBOX_IMAGE, "bash", "-c", command]
+    # fmt: on
+    return argv
+
+
+def run_bash_in_sandbox(
+    command: str, cwd: Path, *, timeout_s: float = 30.0, max_output_chars: int = 10_000
+) -> BashResult:
+    name = f"swe-{uuid4().hex}"
+    argv = sandbox_argv(command=command, workspace=cwd.resolve(), name=name)
+
+    is_timeout = False
+    started_ns = time.monotonic_ns()
+
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+
+    try:
+        raw, _ = proc.communicate(timeout=timeout_s)
+        ended_ns = time.monotonic_ns()
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=10)
+        try:
+            raw, _ = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            raw, _ = proc.communicate()
+        ended_ns = time.monotonic_ns()
+        is_timeout = True
+
+    code = proc.returncode
+    if is_timeout:
+        code = None
+    output, truncate_chars = truncate_middle(raw.decode(errors="replace"), max_output_chars)
+
+    return BashResult(
+        command=command,
+        output=output,
+        exit_code=code,
+        timed_out=is_timeout,
+        truncated_chars=truncate_chars,
+        started_ns=started_ns,
+        ended_ns=ended_ns,
+    )

@@ -1,6 +1,7 @@
 """The `swe-agent` command. Subcommands such as `run` get added here as phases land."""
 
 import os
+import subprocess
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
@@ -15,11 +16,15 @@ from swe_agent.models.base import Model
 from swe_agent.models.openai import DEFAULT_BASE_URL, OpenAIModel
 from swe_agent.models.pricing import UnknownModelError
 from swe_agent.telemetry.trace import Budgets, StepRecord
+from swe_agent.tools.bash import SANDBOX_IMAGE, run_bash, run_bash_in_sandbox
 
 # Prompts live inside the package (src/swe_agent/prompts/), so an installed copy has them
 # too. The file name is also the prompt version recorded in the trace, so the two cannot
 # drift apart.
-SYSTEM_PROMPT = "system_v1"
+SYSTEM_PROMPT = "system_v2"  # the sandbox: Linux, GNU tools, no network, /workspace
+HOST_SYSTEM_PROMPT = "system_v1"  # --no-sandbox: commands run on this Mac, with BSD tools
+
+SANDBOX_BUILD = f"docker build -t {SANDBOX_IMAGE} -f docker/sandbox.Dockerfile docker/"
 
 # The per-user folder: an optional `env` file with the API key, and `runs/` for trajectories.
 HOME_ENV = "SWE_AGENT_HOME"
@@ -108,6 +113,13 @@ def run(
             "--stream", help="Stream responses and record the time to first token (anthropic)."
         ),
     ] = False,
+    sandbox: Annotated[
+        bool,
+        typer.Option(
+            help="Run each command in a fresh Docker container: no network, and only --cwd "
+            "is writable. --no-sandbox runs commands directly on this machine."
+        ),
+    ] = True,
 ) -> None:
     """Run the agent on the task until it finishes or a budget runs out."""
     # Read the keys here, never at import time: CI has no key, and --help must still work.
@@ -122,8 +134,9 @@ def run(
     if model is None:
         _fail(f"pass --model: there is no default model for --provider {provider}")
 
+    prompt_version = SYSTEM_PROMPT if sandbox else HOST_SYSTEM_PROMPT
     try:
-        system_prompt = load_system_prompt()
+        system_prompt = load_system_prompt(prompt_version)
     except OSError as e:
         _fail(f"cannot read the system prompt: {e}")
 
@@ -140,6 +153,9 @@ def run(
     except UnknownModelError:
         _fail(f"no price for model {model!r}; add it to PRICES in models/pricing.py")
 
+    if sandbox and (problem := sandbox_problem()):
+        _fail(f"{problem}. Build the image with `{SANDBOX_BUILD}`, or pass --no-sandbox.")
+
     cost_so_far = 0.0
 
     def print_step(step: StepRecord) -> None:
@@ -151,12 +167,13 @@ def run(
         llm,
         cwd=cwd.resolve(),
         system_prompt=system_prompt,
-        prompt_version=SYSTEM_PROMPT,
+        prompt_version=prompt_version,
         budgets=Budgets(max_steps=max_steps, max_cost_usd=max_cost, max_wall_time_s=max_time),
         # The default is under the user's home, so trajectories never land inside the
         # repository the agent is editing, whichever folder the command starts in.
         trajectory_dir=(runs_dir or agent_home() / "runs").resolve(),
         on_step=print_step,
+        run_command=run_bash_in_sandbox if sandbox else run_bash,
     )
     result = agent.run(task)
     typer.echo(format_summary(result))
@@ -184,6 +201,32 @@ def build_model(
     if base_url is None:
         return AnthropicModel(model, api_key, cache=cache, stream=stream)
     return AnthropicModel(model, api_key, base_url=base_url, cache=cache, stream=stream)
+
+
+def sandbox_problem() -> str | None:
+    """Why the sandbox cannot start on this machine, or None when it can.
+
+    One `docker image inspect` answers both questions: it fails when the daemon is down and
+    when the image was never built. Checked once before the first model call, because the
+    model would otherwise see exit code 125 on every command and could fix neither.
+    """
+    try:
+        probe = subprocess.run(
+            ["docker", "image", "inspect", SANDBOX_IMAGE],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except FileNotFoundError:
+        return "the sandbox needs Docker, and the docker command is not installed"
+    except subprocess.TimeoutExpired:
+        return "the sandbox needs Docker, and the Docker daemon did not answer within 15 s"
+    if probe.returncode != 0:
+        lines = probe.stderr.strip().splitlines()
+        detail = lines[0] if lines else f"exit code {probe.returncode}"
+        return f"the sandbox needs Docker and the {SANDBOX_IMAGE} image ({detail})"
+    return None
 
 
 def load_system_prompt(name: str = SYSTEM_PROMPT) -> str:
