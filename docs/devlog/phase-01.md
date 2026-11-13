@@ -22,4 +22,5 @@
 
 ## Next
 
-- OpenAI adapter, then streaming
+- Sandbox: run the bash tool in a container with no network, resource limits and only the workspace writable.
+- Eval harness: 10–20 fixed tasks with automated pass/fail and a pass rate. Then the project is frozen.

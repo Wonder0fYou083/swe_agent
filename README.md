@@ -1,6 +1,6 @@
 # swe_agent
 
-A SWE agent with KV Cache built from scratch .
+A SWE agent built from scratch, with no agent framework.
 
 > Not affiliated with Princeton's [SWE-agent](https://github.com/SWE-agent/SWE-agent).
 
@@ -17,7 +17,10 @@ There're two runs: cache and no cache. Each run's log is in docs/live-run.
 
 ## Next move
 
-Add more tools, harness engineering, agent's KV cache, etc. Happy to get prs.
+Two last pieces, then the project is frozen:
+
+1. **Sandbox:** run every bash command in a Docker or Podman container with no network, CPU, memory and time limits, and only the workspace writable. It's done when tests show that escape attempts fail cleanly: writing outside the workspace, reaching the network, a fork bomb.
+2. **Eval harness:** 10–20 fixed tasks with automated pass/fail, and the pass rate reported here.
 
 ## Quickstart
 
@@ -52,6 +55,7 @@ CI runs the same lint, type and test commands on every pull request.
 
 - [AGENTS.md](AGENTS.md): instructions for coding agents working on this repo
 - [docs/devlog/](docs/devlog/): what was built in each phase
+- [docs/live-run/](docs/live-run/README.md): one real run, start to finish, with its traces
 
 ## License
 
