@@ -44,7 +44,7 @@ To use an OpenAI model instead, put `OPENAI_API_KEY=...` in the same file. Any o
 swe-agent run "make the tests pass" --provider openai --model gpt-6-luna --reasoning-effort none
 ```
 
-Each run's log is written to `~/.swe-agent/runs/<session_id>.jsonl`. Add `--stream` (Anthropic only) to stream responses, which records each step's time to first token as `model_first_token_ns`.
+Each run's log is written to `~/.swe-agent/runs/<session_id>.jsonl`. Add `--stream` (Anthropic only) to stream responses, which records each step's TTFT as `model_first_token_ns`.
 
 ## Development
 
