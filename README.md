@@ -26,7 +26,7 @@ Two last pieces, then the project is frozen:
 
 ## Quickstart
 
-Requires Python 3.12+. Install the `swe-agent` command with [pipx](https://pipx.pypa.io/) (or plain `pip`); uv isn't needed:
+Requires Python 3.12+. Install the `swe-agent` command with [pipx](https://pipx.pypa.io/) (or plain `pip`):
 
 ```bash
 pipx install git+https://github.com/Wonder0fYou083/swe_agent.git
