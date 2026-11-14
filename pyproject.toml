@@ -1,6 +1,6 @@
 [project]
 name = "swe-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "A model-agnostic, terminal-first software-engineering agent, built from scratch."
 readme = "README.md"
 license = "MIT"
@@ -32,6 +32,7 @@ build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["evals/tasks"]  # the task repos are buggy on purpose
 
 [tool.ruff.lint]
 select = [
@@ -49,12 +50,14 @@ select = [
 ]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "evals"]
+exclude = ["evals/tasks"]  # the task repos are buggy on purpose
 strict = ["src"]
 
 [tool.pytest]
 minversion = "9.0"
 testpaths = ["tests"]
+pythonpath = ["."]  # so tests can import evals, which lives outside src/
 addopts = ["-ra", "--import-mode=importlib"]
 strict = true
 markers = [
