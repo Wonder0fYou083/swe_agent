@@ -1,0 +1,10 @@
+{"task":"chunks_off_by_one","passed":true,"stop":"submitted","steps":3,"cost_usd":0.0005210550000000001,"wall_time_s":4.4,"trajectory":"89a4f806550e40a886bb217239f5b60a.jsonl"}
+{"task":"discount_two_files","passed":true,"stop":"submitted","steps":4,"cost_usd":0.0008146900000000001,"wall_time_s":6.3,"trajectory":"884723d9a58a48b7bafda77a3c545b7f.jsonl"}
+{"task":"inventory_remove_readme","passed":true,"stop":"submitted","steps":4,"cost_usd":0.0008512799999999999,"wall_time_s":6.5,"trajectory":"01fccc88005349a7ada5deb9e8841a3a.jsonl"}
+{"task":"kelvin_two_files","passed":true,"stop":"submitted","steps":4,"cost_usd":0.0008144949999999999,"wall_time_s":5.8,"trajectory":"fd36c4e107c2403f8440c48ac8275143.jsonl"}
+{"task":"merge_intervals_edges","passed":true,"stop":"submitted","steps":4,"cost_usd":0.0008341049999999999,"wall_time_s":6.9,"trajectory":"04433e007a0f494faa7b05d7202e20f8.jsonl"}
+{"task":"moving_average_off_by_one","passed":true,"stop":"submitted","steps":4,"cost_usd":0.000440015,"wall_time_s":4.2,"trajectory":"05441c9bc9d7405784dab92a3a1313ba.jsonl"}
+{"task":"renamed_import","passed":true,"stop":"submitted","steps":4,"cost_usd":0.0008551100000000001,"wall_time_s":5.6,"trajectory":"e0528c7032c84ab69541b3d907e68cf9.jsonl"}
+{"task":"slugify_readme","passed":true,"stop":"submitted","steps":3,"cost_usd":0.000841715,"wall_time_s":6.0,"trajectory":"915bcf9d44a14635bf30a81aa3aa9baf.jsonl"}
+{"task":"toy_median","passed":true,"stop":"submitted","steps":4,"cost_usd":0.000511075,"wall_time_s":4.1,"trajectory":"7a62facf9cfc4ad6b01aeb42f4c4ac7d.jsonl"}
+{"task":"word_count_edges","passed":true,"stop":"submitted","steps":4,"cost_usd":0.00057503,"wall_time_s":5.7,"trajectory":"e16f461e89b446c7811e1afda979a467.jsonl"}

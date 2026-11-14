@@ -23,6 +23,7 @@ uv run pytest -m docker              # only the tests that start containers
 uv run ruff check . && uv run ruff format --check .
 uv run pyright                       # types
 uv run pre-commit run --all-files    # git hooks: ruff + gitleaks
+uv run python -m evals.run           # the eval: every task in the sandbox (paid API calls)
 ```
 
 The sandbox image is built once, and again whenever `docker/sandbox.Dockerfile` changes. The build needs the network; the containers it makes have none.

@@ -6,6 +6,13 @@ A SWE agent built from scratch, with no agent framework.
 
 ## Current Status (updated on 11/13/2026)
 
+**Update (11/13/2026):** I ran a harness evaluation on my agent by letting claude create 10 tests and record the results.
+[Evaluation results](evals/results); [Evaluation tests](evals/tests), and live tests can be run with
+
+```bash
+python3 evals/run.py
+```
+
 **Update (11/13/2026):** I added a docker container for each bash command run: every bash command now runs in a fresh Docker container with no network, CPU, memory, process and time limits, and only the repository writable. Tests show that escape attempts fail cleanly: writing outside the workspace, reaching the network, a fork bomb, using too much memory, reading host secrets.
 
 **Update (11/12/2026):** I added an OpenAi adapter so that my agent
@@ -20,12 +27,6 @@ utilizing python httpx (I know it's kinda stupid since I can just use Anthropic(
 I unite the message (from and to the Anthropic API) format to my customized types for the agent to read.
 I asked claude to build the cli and then I conducted a live run: the agent is asked to fix a small bug in a toy repo.
 There're two runs: cache and no cache. Each run's log is in docs/live-run. 
-
-## Next move
-
-One last piece, then the project is frozen:
-
-- **Eval harness:** 10–20 fixed tasks with automated pass/fail, and the pass rate reported here.
 
 ## Quickstart
 
