@@ -1,7 +1,8 @@
-"""The `swe-agent` command. Subcommands such as `run` get added here as phases land."""
+"""The `swe-agent` command: `run` for one task, or bare `swe-agent` for the start page."""
 
 import os
 import subprocess
+import sys
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Annotated, NoReturn
 import typer
 
 from swe_agent import __version__
+from swe_agent.cli.splash import PosixTerminal, run_splash
 from swe_agent.core.agent import Agent, RunResult
 from swe_agent.models.anthropic import AnthropicModel
 from swe_agent.models.base import Model
@@ -42,10 +44,7 @@ DEFAULT_MODELS = {Provider.anthropic: "claude-haiku-5-5"}
 
 OBSERVATION_LINES = 5  # lines of each command's output shown per step
 
-app = typer.Typer(
-    help="A model-agnostic, terminal-first software-engineering agent.",
-    no_args_is_help=True,
-)
+app = typer.Typer(help="A model-agnostic, terminal-first software-engineering agent.")
 
 
 def _print_version(value: bool) -> None:
@@ -54,8 +53,9 @@ def _print_version(value: bool) -> None:
         raise typer.Exit
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
@@ -66,7 +66,47 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """A model-agnostic, terminal-first software-engineering agent."""
+    """A model-agnostic, terminal-first software-engineering agent.
+
+    With no command, it opens the start page and asks for one task.
+    """
+    if ctx.invoked_subcommand is None:
+        start(ctx)
+
+
+def start(ctx: typer.Context) -> None:
+    """Bare `swe-agent`: the start page, then one task, run with `run`'s defaults.
+
+    Anywhere but an interactive terminal it prints the help and exits 2, as it always has.
+    """
+    if not is_interactive():
+        typer.echo(ctx.get_help())
+        raise typer.Exit(code=2)
+    preflight()
+    try:
+        go = run_splash(PosixTerminal(), title=f"swe-agent {__version__}")
+    except KeyboardInterrupt:
+        raise typer.Exit(code=130) from None
+    if not go:
+        raise typer.Exit(code=0)
+    task = typer.prompt("What should I do?").strip()
+    run(task)
+
+
+def is_interactive() -> bool:
+    """True when a person is at the keyboard: stdin and stdout are a real terminal."""
+    return sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+
+
+def preflight() -> None:
+    """The checks `run` makes with its defaults, made before the start page, not after it.
+
+    The key is looked up without being removed from the environment: `run` reads it later.
+    """
+    if not (os.environ.get(API_KEY) or read_env_file(agent_home() / "env").get(API_KEY)):
+        _fail(_missing_key(API_KEY))
+    if problem := sandbox_problem():
+        _fail(f"{problem}. Build the image with `{SANDBOX_BUILD}`, or use `run --no-sandbox`.")
 
 
 @app.command()
@@ -128,7 +168,7 @@ def run(
     api_key = keys[key_name]
     # A local server given by --base-url usually needs no key.
     if not api_key and not (provider is Provider.openai and base_url):
-        _fail(f"{key_name} is not set. Export it, or put {key_name}=... in {agent_home() / 'env'}.")
+        _fail(_missing_key(key_name))
 
     model = model or DEFAULT_MODELS.get(provider)
     if model is None:
@@ -303,6 +343,10 @@ def _output_lines(observation: str) -> list[str]:
     """The command's output from an observation, without the status line and <output> tags."""
     body = observation.split("<output>\n", 1)[-1].rsplit("</output>", 1)[0]
     return body.rstrip("\n").splitlines()
+
+
+def _missing_key(name: str) -> str:
+    return f"{name} is not set. Export it, or put {name}=... in {agent_home() / 'env'}."
 
 
 def _fail(message: str) -> NoReturn:
