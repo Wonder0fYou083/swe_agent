@@ -13,4 +13,4 @@
 
 ## Next
 
-- Freeze for now
+- Enhance harness referring to anthropic's technical articles

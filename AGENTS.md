@@ -4,7 +4,7 @@ Instructions for AI agents working in this repository: Claude Code and this proj
 
 ## What this project is
 
-`swe_agent` is a terminal-first coding agent built from scratch. It has one tool, `bash`, and calls the Anthropic API or any OpenAI-compatible endpoint through its own adapters behind a provider-neutral `Model` interface. Every `bash` command runs in a fresh Docker container with no network, where only the repository is writable (`docs/adr/0001-sandbox.md`); `--no-sandbox` runs commands on the host. One piece is left before the project is frozen: a small fixed eval set with a pass rate.
+`swe_agent` is a terminal-first coding agent built from scratch. It has one tool, `bash`, and calls the Anthropic API or any OpenAI-compatible endpoint through its own adapters behind a provider-neutral `Model` interface. Every `bash` command runs in a fresh Docker container with no network, where only the repository is writable (`docs/adr/0001-sandbox.md`); `--no-sandbox` runs commands on the host. A small fixed eval set in `evals/` reports a pass rate.
 
 ## Stack
 
