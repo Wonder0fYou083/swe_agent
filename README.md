@@ -15,7 +15,7 @@ swe-agent
 from the project folder you wanna work in.
 
 **Update (11/13/2026):** I ran a harness evaluation on my agent by letting claude create 10 tests and record the results.
-[Evaluation results](evals/results); [Evaluation tests](evals/tests), and live tests can be run with
+[Evaluation results](evals/results); [Evaluation tasks](evals/tasks), and live tests can be run with
 
 ```bash
 python3 evals/run.py
