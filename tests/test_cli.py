@@ -1,20 +1,28 @@
 import os
 import re
+from collections.abc import Callable
 from importlib.metadata import version
 from pathlib import Path
 from typing import ClassVar
 
 import pytest
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from swe_agent.cli.main import (
+    CHAT_HINT,
+    CHAT_HOST_SYSTEM_PROMPT,
+    CHAT_SYSTEM_PROMPT,
+    CONTEXT_WINDOWS,
     HOST_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     Provider,
     agent_home,
     app,
     build_model,
+    context_warning,
     format_step,
+    format_tokens,
+    format_turn,
     load_system_prompt,
     read_api_key,
     read_env_file,
@@ -22,11 +30,12 @@ from swe_agent.cli.main import (
 )
 from swe_agent.core.agent import RunResult
 from swe_agent.models.anthropic import AnthropicModel
-from swe_agent.models.fake import ScriptedModel
+from swe_agent.models.fake import ScriptedModel, text_reply
 from swe_agent.models.openai import OpenAIModel
 from swe_agent.models.pricing import PRICES, Price, UnknownModelError
-from swe_agent.models.types import Endpoint, Message, TextBlock, Usage
-from swe_agent.telemetry.trace import StepRecord, ToolRecord
+from swe_agent.models.types import Endpoint, Message, ModelResponse, TextBlock, Usage
+from swe_agent.telemetry.logger import read_trajectory
+from swe_agent.telemetry.trace import SessionEnd, StepRecord, ToolRecord
 from swe_agent.tools.bash import run_bash, run_bash_in_sandbox
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -273,6 +282,28 @@ def test_the_sandbox_prompt_describes_the_container() -> None:
     assert "macOS" not in prompt
 
 
+class _FakeSession:
+    """Stands in for Session: records each text sent and submits at once."""
+
+    def __init__(self) -> None:
+        self.turns = 0
+        self.cost_usd = 0.0
+        self.trajectory: Path | None = None
+
+    def __enter__(self) -> "_FakeSession":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        pass
+
+    def send(self, text: str) -> RunResult:
+        _FakeAgent.tasks.append(text)
+        self.turns += 1
+        return RunResult(
+            session_id="s", stop="submitted", steps=1, cost_usd=0.0, final_text="", trajectory=None
+        )
+
+
 class _FakeAgent:
     """Stands in for Agent: records how the CLI built it and submits at once."""
 
@@ -287,6 +318,9 @@ class _FakeAgent:
         return RunResult(
             session_id="s", stop="submitted", steps=1, cost_usd=0.0, final_text="", trajectory=None
         )
+
+    def session(self) -> _FakeSession:
+        return _FakeSession()
 
 
 @pytest.fixture
@@ -435,16 +469,18 @@ def start_page(monkeypatch: pytest.MonkeyPatch, fake_agent: type[_FakeAgent]) ->
     return calls
 
 
-def test_after_the_start_page_the_task_typed_in_is_run(
+def test_after_the_start_page_a_chat_session_starts(
     start_page: list[str], fake_agent: type[_FakeAgent]
 ) -> None:
-    result = CliRunner().invoke(app, [], input="fix the failing test\n")
+    result = CliRunner().invoke(app, [], input="fix the failing test\nadd a test\nexit\n")
 
     assert result.exit_code == 0, result.output
     assert start_page == [f"swe-agent {version('swe-agent')}"]
-    assert "What should I do?" in result.output
-    assert fake_agent.tasks == ["fix the failing test"]
-    assert fake_agent.built[0]["run_command"] is run_bash_in_sandbox  # run's defaults
+    assert CHAT_HINT in result.output
+    assert fake_agent.tasks == ["fix the failing test", "add a test"]
+    [kwargs] = fake_agent.built  # one agent, so one session, for both tasks
+    assert kwargs["run_command"] is run_bash_in_sandbox  # chat's defaults
+    assert kwargs["prompt_version"] == CHAT_SYSTEM_PROMPT
 
 
 def test_quitting_the_start_page_runs_nothing(
@@ -455,7 +491,7 @@ def test_quitting_the_start_page_runs_nothing(
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == 0
-    assert "What should I do?" not in result.output
+    assert CHAT_HINT not in result.output
     assert fake_agent.tasks == []
 
 
@@ -518,3 +554,275 @@ def test_the_key_file_counts_for_the_check_before_the_start_page(
 
     assert result.exit_code == 0, result.output
     assert start_page != []
+
+
+# --- swe-agent chat ------------------------------------------------------------------------
+
+
+@pytest.fixture
+def scripted(monkeypatch: pytest.MonkeyPatch) -> Callable[[list[ModelResponse]], ScriptedModel]:
+    """The real Agent and Session on a scripted model: give it the replies, get the model."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    def use(responses: list[ModelResponse]) -> ScriptedModel:
+        model = ScriptedModel(responses)
+        monkeypatch.setattr("swe_agent.cli.main.build_model", lambda *a, **k: model)
+        return model
+
+    return use
+
+
+def _chat(tmp_path: Path, typed: str, *flags: str) -> Result:
+    args = ["chat", "--cwd", str(tmp_path), "--runs-dir", str(tmp_path / "runs"), "--no-sandbox"]
+    return CliRunner().invoke(app, [*args, *flags], input=typed)
+
+
+def test_chat_keeps_one_history_across_tasks(
+    scripted: Callable[[list[ModelResponse]], ScriptedModel], tmp_path: Path
+) -> None:
+    model = scripted([text_reply("a", cost_usd=0.001), text_reply("b", cost_usd=0.002)])
+
+    result = _chat(tmp_path, "first task\nsecond task\n")
+
+    assert result.exit_code == 0, result.output
+    second = model.requests[1].messages
+    assert [m.text for m in second] == ["first task", "a", "second task"]
+    assert "[turn 1] submitted · 1 step · $0.0010 this turn · $0.0010 session" in result.output
+    assert "[turn 2] submitted · 1 step · $0.0020 this turn · $0.0030 session" in result.output
+    [trajectory] = (tmp_path / "runs").iterdir()  # one file for the whole session
+    assert result.output.rstrip().endswith(f"trajectory: {trajectory}")
+    assert isinstance(read_trajectory(trajectory)[-1], SessionEnd)
+
+
+@pytest.mark.parametrize("word", ["exit", "quit"])
+def test_chat_skips_blank_lines_and_ends_on_exit_or_quit(
+    scripted: Callable[[list[ModelResponse]], ScriptedModel], tmp_path: Path, word: str
+) -> None:
+    model = scripted([text_reply("a")])
+
+    result = _chat(tmp_path, f"\n   \nthe task\n{word}\nnever sent\n")
+
+    assert result.exit_code == 0, result.output
+    assert len(model.requests) == 1
+    assert [m.text for m in model.requests[0].messages] == ["the task"]
+
+
+def test_ctrl_d_before_any_task_ends_with_no_trajectory(
+    scripted: Callable[[list[ModelResponse]], ScriptedModel], tmp_path: Path
+) -> None:
+    scripted([])
+
+    result = _chat(tmp_path, "")
+
+    assert result.exit_code == 0, result.output
+    assert CHAT_HINT in result.output
+    assert "trajectory:" not in result.output
+    assert not (tmp_path / "runs").exists()
+
+
+def test_ctrl_c_during_a_turn_ends_the_session_and_closes_its_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    class Interrupted(ScriptedModel):
+        def complete(self, *args: object, **kwargs: object) -> ModelResponse:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("swe_agent.cli.main.build_model", lambda *a, **k: Interrupted([]))
+
+    result = _chat(tmp_path, "the task\nnever sent\n")
+
+    assert result.exit_code == 130
+    assert "Aborted" not in result.output
+    [trajectory] = (tmp_path / "runs").iterdir()
+    assert isinstance(read_trajectory(trajectory)[-1], SessionEnd)
+
+
+def test_a_failed_turn_prints_its_error_and_the_session_goes_on(
+    scripted: Callable[[list[ModelResponse]], ScriptedModel], tmp_path: Path
+) -> None:
+    scripted([])  # every call fails: the script is empty
+
+    result = _chat(tmp_path, "one\ntwo\n")
+
+    assert result.exit_code == 0, result.output
+    assert "[turn 1] error · 0 steps" in result.output
+    assert "[turn 2] error · 0 steps" in result.output
+    assert "error: script has 0 responses" in result.output
+
+
+def test_chat_help_lists_the_same_options_as_run() -> None:
+    def options(command: str) -> set[str]:
+        result = CliRunner().invoke(app, [command, "--help"], env={"COLUMNS": "200"})
+        return set(re.findall(r"--[a-z][a-z-]+", ANSI.sub("", result.output)))
+
+    assert options("chat") == options("run")
+
+
+def test_chat_budgets_say_they_count_each_turn() -> None:
+    result = CliRunner().invoke(app, ["chat", "--help"], env={"COLUMNS": "200"})
+
+    assert "Stop a turn once it has cost this" in ANSI.sub("", result.output)
+
+
+@pytest.mark.parametrize(
+    ("flags", "prompt"),
+    [([], CHAT_SYSTEM_PROMPT), (["--no-sandbox"], CHAT_HOST_SYSTEM_PROMPT)],
+)
+def test_chat_uses_the_chat_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_agent: type[_FakeAgent],
+    flags: list[str],
+    prompt: str,
+) -> None:
+    monkeypatch.setattr("swe_agent.cli.main.sandbox_problem", lambda: None)
+
+    result = CliRunner().invoke(app, ["chat", "--cwd", str(tmp_path), *flags], input="x\n")
+
+    assert result.exit_code == 0, result.output
+    [kwargs] = fake_agent.built
+    assert kwargs["prompt_version"] == prompt
+    assert kwargs["system_prompt"] == load_system_prompt(prompt)
+
+
+@pytest.mark.parametrize("name", [CHAT_SYSTEM_PROMPT, CHAT_HOST_SYSTEM_PROMPT])
+def test_chat_prompts_say_a_reply_ends_the_turn_not_the_run(name: str) -> None:
+    prompt = load_system_prompt(name)
+
+    assert "A reply without a tool call ends your turn" in prompt
+    assert "ends the run" not in prompt
+    assert "Nobody will answer" not in prompt
+
+
+def test_the_chat_sandbox_prompt_describes_the_container() -> None:
+    prompt = load_system_prompt(CHAT_SYSTEM_PROMPT)
+
+    assert "/workspace" in prompt
+    assert "no network" in prompt
+    assert "macOS" not in prompt
+
+
+def test_format_turn_reports_the_turn_and_the_session() -> None:
+    result = RunResult(
+        session_id="s", stop="submitted", steps=3, cost_usd=0.0012, final_text="", trajectory=None
+    )
+
+    text = format_turn(result, turn=2, session_cost=0.0031)
+
+    assert text == "[turn 2] submitted · 3 steps · $0.0012 this turn · $0.0031 session\n"
+
+
+# --- the context window ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tokens", "text"),
+    [(850, "850"), (45_200, "45.2K"), (912_000, "912.0K"), (1_000_000, "1M"), (1_250_000, "1.2M")],
+)
+def test_format_tokens(tokens: int, text: str) -> None:
+    assert format_tokens(tokens) == text
+
+
+def test_the_warning_starts_at_exactly_90_percent() -> None:
+    assert context_warning(900_000, 1_000_000) == (
+        "warning: context window 90% full (900.0K of 1M tokens). "
+        "Start a new session before it fills up."
+    )
+    assert context_warning(899_999, 1_000_000) is None
+
+
+def test_an_unknown_window_or_count_never_warns() -> None:
+    assert context_warning(5_000_000, None) is None
+    assert context_warning(None, 1_000_000) is None
+
+
+def _step_with_context(tokens: int | None) -> StepRecord:
+    return StepRecord(
+        session_id="s",
+        step=1,
+        parent_step=None,
+        request_messages=1,
+        assistant=Message(role="assistant", content=[TextBlock(text="hi")]),
+        appended=True,
+        stop_reason="end_turn",
+        usage=Usage(),
+        context_tokens=tokens,
+        cost_usd=0.0,
+        model_started_ns=0,
+        model_first_token_ns=None,
+        model_ended_ns=0,
+        attempts=1,
+        tools=[],
+    )
+
+
+def test_the_step_header_shows_how_full_the_context_is() -> None:
+    step = _step_with_context(45_200)
+
+    known = format_step(step, 0.0, context_window=1_000_000)
+    unknown = format_step(step, 0.0)
+
+    assert known.startswith("[step 1] $0.0000 so far · context 45.2K/1M (4%)\nhi\n")
+    assert unknown.startswith("[step 1] $0.0000 so far · context 45.2K\nhi\n")
+    assert format_step(_step_with_context(None), 0.0).startswith("[step 1] $0.0000 so far\n")
+
+
+def test_the_step_header_never_reads_90_percent_without_the_warning() -> None:
+    text = format_step(_step_with_context(899_999), 0.0, context_window=1_000_000)
+
+    assert "(89%)" in text
+    assert "warning" not in text
+
+
+def _nearly_full() -> ModelResponse:
+    return text_reply("done").model_copy(update={"usage": Usage(input_tokens=950_000)})
+
+
+@pytest.mark.parametrize("command", ["run", "chat"])
+def test_run_and_chat_both_warn_when_the_context_is_nearly_full(
+    scripted: Callable[[list[ModelResponse]], ScriptedModel], tmp_path: Path, command: str
+) -> None:
+    scripted([_nearly_full()])
+    task = ["x"] if command == "run" else []
+
+    result = CliRunner().invoke(
+        app,
+        [
+            command,
+            *task,
+            "--cwd",
+            str(tmp_path),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+            "--no-sandbox",
+        ],
+        input="x\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "· context 950.0K/1M (95%)" in result.output
+    assert "warning: context window 95% full (950.0K of 1M tokens)." in result.output
+
+
+@pytest.mark.parametrize(
+    ("flags", "window"),
+    [
+        ([], 1_000_000),  # the default claude-haiku-5-5
+        (["--model", "claude-opus-5-5"], 1_000_000),
+        (["--provider", "openai", "--model", "m", "--base-url", "http://localhost:1/v1"], None),
+    ],
+)
+def test_the_agent_gets_the_models_context_window(
+    tmp_path: Path, fake_agent: type[_FakeAgent], flags: list[str], window: int | None
+) -> None:
+    result = CliRunner().invoke(app, ["run", "x", "--cwd", str(tmp_path), "--no-sandbox", *flags])
+
+    assert result.exit_code == 0, result.output
+    [kwargs] = fake_agent.built
+    assert kwargs["context_window"] == window
+
+
+def test_every_model_with_a_window_has_a_price() -> None:
+    assert set(CONTEXT_WINDOWS) <= set(PRICES)
