@@ -4,7 +4,11 @@ A SWE agent built from scratch, with no agent framework.
 
 > Not affiliated with Princeton's [SWE-agent](https://github.com/SWE-agent/SWE-agent).
 
-## Current Status (updated on 11/13/2026)
+## Current Status (updated on 11/27/2026)
+
+**Update (11/27/2026):** I enabled multiple user-agent turns in one session. For each turn,
+all previous turns' chat histories are in the context. There's also a context manager in each step,
+indicating how full is the context window so far. A warning will be raised if context window is 90% full.
 
 **Update (11/13/2026):** I added an interactive GUI. Check it out by running
 
