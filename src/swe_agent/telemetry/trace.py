@@ -27,6 +27,7 @@ class SessionStart(BaseModel):
     task: str
     model: str
     endpoint: Endpoint
+    context_window: int | None = None
     prompt_version: str | None  # e.g. "system_v1"; None for an ad-hoc prompt
     system_prompt: str
     tools: list[ToolSpec]
@@ -53,13 +54,15 @@ class ToolRecord(BaseModel):
 class StepRecord(BaseModel):
     type: Literal["step"] = "step"
     session_id: str
+    turn: int = 1
     step: int  # 1, 2, 3, ...
-    parent_step: int | None  # step - 1 for now; branches later
+    parent_step: int | None
     request_messages: int  # how many messages were sent with this request
     assistant: Message  # full text, tool calls and provider blocks
     appended: bool  # False if the response was dropped from history (max_tokens, refusal)
     stop_reason: StopReason
     usage: Usage
+    context_tokens: int | None = None
     cost_usd: float
     model_started_ns: int
     model_first_token_ns: int | None
@@ -68,9 +71,18 @@ class StepRecord(BaseModel):
     tools: list[ToolRecord]
 
 
-class SessionEnd(BaseModel):
-    type: Literal["session_end"] = "session_end"
+class UserTurn(BaseModel):
+    type: Literal["user_turn"] = "user_turn"
     session_id: str
+    turn: int
+    text: str
+    started_ns: int
+
+
+class TurnEnd(BaseModel):
+    type: Literal["turn_end"] = "turn_end"
+    session_id: str
+    turn: int
     stop: StopKind
     steps: int
     cost_usd: float
@@ -79,4 +91,18 @@ class SessionEnd(BaseModel):
     error: str | None = None
 
 
-TraceRecord = Annotated[SessionStart | StepRecord | SessionEnd, Field(discriminator="type")]
+class SessionEnd(BaseModel):
+    type: Literal["session_end"] = "session_end"
+    session_id: str
+    stop: StopKind
+    steps: int
+    turns: int = 1  # v0.3.0 files had one turn and no field
+    cost_usd: float
+    usage: Usage
+    ended_ns: int
+    error: str | None = None
+
+
+TraceRecord = Annotated[
+    SessionStart | StepRecord | UserTurn | TurnEnd | SessionEnd, Field(discriminator="type")
+]
