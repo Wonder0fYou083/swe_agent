@@ -1,4 +1,4 @@
-# Phase NN — title · `vX.Y.Z`
+# Phase 02 — title · `v0.2.0`
 
 **Dates:** 2026-11-13 · **PRs:** #32
 
