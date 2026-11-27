@@ -65,32 +65,32 @@ class Agent:
         *,
         cwd: Path,
         system_prompt: str,
-        prompt_version: str | None = None,  # e.g. "system_v1"; None for an ad-hoc prompt
+        prompt_version: str | None = None,
         budgets: Budgets | None = None,
         trajectory_dir: Path | None = None,
         on_step: Callable[[StepRecord], None] | None = None,
         clock: Callable[[], int] = time.monotonic_ns,
         run_command: RunCommand = run_bash,
-        context_window: int | None = None,  # the model's limit in tokens; None: unknown
+        context_window: int | None = None,
     ) -> None:
-        self.model = model  # also supplies the trace's model name and endpoint
+        self.model = model
         self.cwd = cwd
-        self.run_command = run_command  # the CLI passes run_bash_in_sandbox by default
+        self.run_command = run_command
         self.system_prompt = system_prompt
         self.prompt_version = prompt_version
         self.budgets = budgets or Budgets()
-        self.trajectory_dir = trajectory_dir  # None: no trajectory file
-        self.on_step = on_step  # the CLI uses this to print each step live
-        self.clock = clock  # tests pass a fake clock to test max_wall_time
-        self.tools = [BASH_SPEC]  # one list, so the request and SessionStart always agree
+        self.trajectory_dir = trajectory_dir
+        self.on_step = on_step
+        self.clock = clock
+        self.tools = [BASH_SPEC]
         self.context_window = context_window
 
     def run(self, task: str) -> RunResult:
         """One task as a one-turn session: call the model, run its tool calls, send the
         results back, until a stop condition."""
         session_id = uuid4().hex
-        path = self.trajectory_path(session_id)
         t0 = self.clock()
+        path = self.trajectory_path(session_id)
         logger = TrajectoryLogger(path) if path is not None else None
         log: TraceWriter = logger.write if logger is not None else _discard
         try:
@@ -203,7 +203,7 @@ class Agent:
         """Creates a path to write the trajectory for the current session"""
         if self.trajectory_dir is None:
             return None
-        return self.trajectory_dir / f"{session_id}.jsonl"
+        return self.trajectory_dir / f"{datetime.now(UTC)}-{session_id}.jsonl"
 
     def session_start(self, session_id: str, task: str, t0: int) -> SessionStart:
         """Starts a session"""
