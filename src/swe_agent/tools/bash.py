@@ -132,18 +132,44 @@ def format_observation(result: BashResult) -> str:
 
 def sandbox_argv(command: str, workspace: Path, name: str) -> list[str]:
     argv: list[str] = []
-    # fmt: off
-    argv += ["docker", "run",
-             "--rm", "--name", name,
-             "--network", "none",
-             "--read-only", "-v", str(workspace) + ":/workspace", "-w", "/workspace",
-             "--tmpfs", "/tmp:size=64m", "-e", "HOME=/tmp",
-             "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "256",
-             "--user", str(os.getuid())+":"+str(os.getgid()),
-             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-             "--pull", "never",
-             SANDBOX_IMAGE, "bash", "-c", command]
-    # fmt: on
+    argv += [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        name,
+        "--network",
+        "none",
+        "--read-only",
+        "-v",
+        str(workspace) + ":/workspace",
+        "-w",
+        "/workspace",
+        "--tmpfs",
+        "/tmp:size=64m",
+        "-e",
+        "HOME=/tmp",
+        "--memory",
+        "1g",
+        "--memory-swap",
+        "1g",
+        "--cpus",
+        "1",
+        "--pids-limit",
+        "256",
+        "--user",
+        str(os.getuid()) + ":" + str(os.getgid()),
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--pull",
+        "never",
+        SANDBOX_IMAGE,
+        "bash",
+        "-c",
+        command,
+    ]
     return argv
 
 

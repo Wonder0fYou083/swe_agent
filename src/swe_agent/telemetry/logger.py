@@ -4,7 +4,14 @@ from typing import Self
 
 from pydantic import TypeAdapter
 
-from swe_agent.telemetry.trace import SessionEnd, SessionStart, StepRecord, TraceRecord
+from swe_agent.telemetry.trace import (
+    SessionEnd,
+    SessionStart,
+    StepRecord,
+    TraceRecord,
+    TurnEnd,
+    UserTurn,
+)
 
 # Validates one JSON line into whichever record its "type" field names.
 _RECORD: TypeAdapter[TraceRecord] = TypeAdapter(TraceRecord)
@@ -16,7 +23,7 @@ class TrajectoryLogger:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._file = path.open("a", encoding="utf-8")
 
-    def write(self, record: SessionStart | StepRecord | SessionEnd) -> None:
+    def write(self, record: SessionStart | UserTurn | StepRecord | TurnEnd | SessionEnd) -> None:
         """Write record.model_dump_json() plus a newline, then flush.
 
         Flushing every line means a crash still leaves every step up to it on disk.
